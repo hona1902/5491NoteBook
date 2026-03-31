@@ -47,7 +47,7 @@ export const chatApi = {
     await apiClient.delete(`/chat/sessions/${sessionId}`)
   },
 
-  // Messaging (synchronous, no streaming)
+  // Messaging (synchronous, no streaming) — kept as fallback
   sendMessage: async (data: SendNotebookChatMessageRequest) => {
     const response = await apiClient.post<{
       session_id: string
@@ -57,6 +57,44 @@ export const chatApi = {
       data
     )
     return response.data
+  },
+
+  // Messaging with SSE streaming (primary path)
+  streamMessage: (data: SendNotebookChatMessageRequest, signal?: AbortSignal) => {
+    // Get auth token using the same logic as apiClient interceptor
+    let token: string | null = null
+    if (typeof window !== 'undefined') {
+      const authStorage = localStorage.getItem('auth-storage')
+      if (authStorage) {
+        try {
+          const { state } = JSON.parse(authStorage)
+          if (state?.token) {
+            token = state.token
+          }
+        } catch (error) {
+          console.error('Error parsing auth storage:', error)
+        }
+      }
+    }
+
+    // Use relative URL to leverage Next.js rewrites
+    const url = `/api/chat/stream`
+
+    // Use fetch with ReadableStream for SSE
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` })
+      },
+      body: JSON.stringify(data),
+      signal,
+    }).then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      return response.body
+    })
   },
 
   buildContext: async (data: BuildContextRequest) => {

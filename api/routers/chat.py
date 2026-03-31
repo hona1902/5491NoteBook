@@ -1,8 +1,10 @@
 import asyncio
+import json
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from langchain_core.runnables import RunnableConfig
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -403,6 +405,148 @@ async def execute_chat(request: ExecuteChatRequest):
             f"Error executing chat: {str(e)}\n"
             f"  Session ID: {request.session_id}\n"
             f"  Model override: {request.model_override}\n"
+            f"  Traceback:\n{traceback.format_exc()}"
+        )
+        raise HTTPException(status_code=500, detail=f"Error executing chat: {str(e)}")
+
+
+async def stream_notebook_chat_response(
+    session_id: str,
+    state_values: dict,
+    model_override: Optional[str] = None,
+    request: Optional[Request] = None,
+) -> AsyncGenerator[str, None]:
+    """Stream notebook chat response as SSE events.
+
+    Follows the proven pattern from source_chat.py::stream_source_chat_response().
+    Emits: user_message -> ai_message -> complete (or error).
+    Checks for client disconnect to free zombie threads.
+    """
+    try:
+        # Emit user message event immediately — this keeps Cloudflare happy
+        # (data sent within the 100 s window)
+        user_msg = state_values.get("messages", [])[-1]
+        user_event = {
+            "type": "user_message",
+            "content": user_msg.content if hasattr(user_msg, "content") else str(user_msg),
+            "timestamp": None,
+        }
+        yield f"data: {json.dumps(user_event)}\n\n"
+
+        # Check for client disconnect before expensive AI call
+        if request and await request.is_disconnected():
+            logger.info(f"Client disconnected before AI call for session {session_id}")
+            return
+
+        # Execute chat graph (sync invoke, runs in thread pool)
+        result = chat_graph.invoke(
+            input=state_values,  # type: ignore[arg-type]
+            config=RunnableConfig(
+                configurable={
+                    "thread_id": session_id,
+                    "model_id": model_override,
+                }
+            ),
+        )
+
+        # Check for client disconnect after AI call
+        if request and await request.is_disconnected():
+            logger.info(f"Client disconnected after AI call for session {session_id}")
+            return
+
+        # Stream AI response messages
+        if "messages" in result:
+            for msg in result["messages"]:
+                if hasattr(msg, "type") and msg.type == "ai":
+                    ai_event = {
+                        "type": "ai_message",
+                        "content": msg.content if hasattr(msg, "content") else str(msg),
+                        "timestamp": None,
+                    }
+                    yield f"data: {json.dumps(ai_event)}\n\n"
+
+        # Completion signal
+        yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+
+    except Exception as e:
+        from open_notebook.utils.error_classifier import classify_error
+
+        _, user_message = classify_error(e)
+        logger.error(f"Error in notebook chat streaming: {str(e)}")
+        error_event = {"type": "error", "message": user_message}
+        yield f"data: {json.dumps(error_event)}\n\n"
+
+
+@router.post("/chat/stream")
+async def stream_chat(request: Request, body: ExecuteChatRequest):
+    """Execute a chat request with SSE streaming response.
+
+    Same logic as /chat/execute but returns a StreamingResponse with
+    Server-Sent Events, preventing Cloudflare 524 timeouts and enabling
+    client disconnect detection.
+    """
+    try:
+        # Verify session exists
+        full_session_id = (
+            body.session_id
+            if body.session_id.startswith("chat_session:")
+            else f"chat_session:{body.session_id}"
+        )
+        session = await ChatSession.get(full_session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        # Determine model override
+        model_override = (
+            body.model_override
+            if body.model_override is not None
+            else getattr(session, "model_override", None)
+        )
+
+        # Get current state
+        current_state = await asyncio.to_thread(
+            chat_graph.get_state,
+            config=RunnableConfig(configurable={"thread_id": full_session_id}),
+        )
+
+        # Prepare state for execution
+        state_values = current_state.values if current_state else {}
+        state_values["messages"] = state_values.get("messages", [])
+        state_values["context"] = body.context
+        state_values["model_override"] = model_override
+
+        # Add user message to state
+        from langchain_core.messages import HumanMessage
+
+        user_message = HumanMessage(content=body.message)
+        state_values["messages"].append(user_message)
+
+        # Update session timestamp
+        await session.save()
+
+        # Return SSE streaming response
+        return StreamingResponse(
+            stream_notebook_chat_response(
+                session_id=full_session_id,
+                state_values=state_values,
+                model_override=model_override,
+                request=request,
+            ),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Content-Type": "text/plain; charset=utf-8",
+            },
+        )
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error in stream_chat: {str(e)}\n"
+            f"  Session ID: {body.session_id}\n"
             f"  Traceback:\n{traceback.format_exc()}"
         )
         raise HTTPException(status_code=500, detail=f"Error executing chat: {str(e)}")
