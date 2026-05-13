@@ -140,3 +140,6 @@ specs/
 
 *.local.yml
 **/*.local.md
+.harness/
+
+.mcp.json
