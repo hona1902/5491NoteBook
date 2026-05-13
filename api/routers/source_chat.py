@@ -14,7 +14,7 @@ from open_notebook.domain.notebook import ChatSession, Source
 from open_notebook.exceptions import (
     NotFoundError,
 )
-from open_notebook.graphs.source_chat import source_chat_graph as source_chat_graph
+from open_notebook.graphs.source_chat import get_source_chat_graph
 from open_notebook.utils.graph_utils import get_session_message_count
 
 router = APIRouter()
@@ -103,7 +103,7 @@ async def create_source_chat_session(
 
         # Create new session with model_override support
         session = ChatSession(
-            title=request.title or f"Source Chat {asyncio.get_event_loop().time():.0f}",
+            title=request.title or "Source Chat",
             model_override=request.model_override,
         )
         await session.save()
@@ -160,6 +160,7 @@ async def get_source_chat_sessions(source_id: str = Path(..., description="Sourc
                     session_data = session_result[0]
 
                     # Get message count from LangGraph state
+                    source_chat_graph = await get_source_chat_graph()
                     msg_count = await get_session_message_count(
                         source_chat_graph, session_id
                     )
@@ -231,9 +232,8 @@ async def get_source_chat_session(
             )
 
         # Get session state from LangGraph to retrieve messages
-        # Use sync get_state() in a thread since SqliteSaver doesn't support async
-        thread_state = await asyncio.to_thread(
-            source_chat_graph.get_state,
+        source_chat_graph = await get_source_chat_graph()
+        thread_state = await source_chat_graph.aget_state(
             config=RunnableConfig(configurable={"thread_id": full_session_id}),
         )
 
@@ -337,6 +337,7 @@ async def update_source_chat_session(
         await session.save()
 
         # Get message count from LangGraph state
+        source_chat_graph = await get_source_chat_graph()
         msg_count = await get_session_message_count(source_chat_graph, full_session_id)
 
         return SourceChatSessionResponse(
@@ -418,9 +419,8 @@ async def stream_source_chat_response(
     """Stream the source chat response as Server-Sent Events."""
     try:
         # Get current state
-        # Use sync get_state() in a thread since SqliteSaver doesn't support async
-        current_state = await asyncio.to_thread(
-            source_chat_graph.get_state,
+        source_chat_graph = await get_source_chat_graph()
+        current_state = await source_chat_graph.aget_state(
             config=RunnableConfig(configurable={"thread_id": session_id}),
         )
 
@@ -438,8 +438,8 @@ async def stream_source_chat_response(
         user_event = {"type": "user_message", "content": message, "timestamp": None}
         yield f"data: {json.dumps(user_event)}\n\n"
 
-        # Execute source chat graph synchronously (like notebook chat does)
-        result = source_chat_graph.invoke(
+        # Execute source chat graph (fully async)
+        result = await source_chat_graph.ainvoke(
             input=state_values,  # type: ignore[arg-type]
             config=RunnableConfig(
                 configurable={"thread_id": session_id, "model_id": model_override}

@@ -1,19 +1,16 @@
-import asyncio
-import sqlite3
 from typing import Annotated, Dict, List, Optional
 
 from ai_prompter import Prompter
 from langchain_core.messages import AIMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
 from open_notebook.ai.provision import provision_langchain_model
-from open_notebook.config import LANGGRAPH_CHECKPOINT_FILE
 from open_notebook.domain.notebook import Source, SourceInsight
 from open_notebook.exceptions import OpenNotebookError
+from open_notebook.graphs.checkpoint import get_memory
 from open_notebook.utils import clean_thinking_content
 from open_notebook.utils.context_builder import ContextBuilder
 from open_notebook.utils.error_classifier import classify_error
@@ -30,20 +27,16 @@ class SourceChatState(TypedDict):
     context_indicators: Optional[Dict[str, List[str]]]
 
 
-def call_model_with_source_context(
+async def acall_model_with_source_context(
     state: SourceChatState, config: RunnableConfig
 ) -> dict:
-    """
-    Main function that builds source context and calls the model.
+    """Async graph node — builds source context and calls the model.
 
-    This function:
-    1. Uses ContextBuilder to build source-specific context
-    2. Applies the source_chat Jinja2 prompt template
-    3. Handles model provisioning with override support
-    4. Tracks context indicators for referenced insights/content
+    Runs entirely on FastAPI's main event loop.  No secondary event loops
+    or ThreadPoolExecutor hacks are needed.
     """
     try:
-        return _call_model_with_source_context_inner(state, config)
+        return await _acall_model_with_source_context_inner(state, config)
     except OpenNotebookError:
         raise
     except Exception as e:
@@ -51,43 +44,21 @@ def call_model_with_source_context(
         raise error_class(user_message) from e
 
 
-def _call_model_with_source_context_inner(
+async def _acall_model_with_source_context_inner(
     state: SourceChatState, config: RunnableConfig
 ) -> dict:
     source_id = state.get("source_id")
     if not source_id:
         raise ValueError("source_id is required in state")
 
-    # Build source context using ContextBuilder (run async code in new loop)
-    def build_context():
-        """Build context in a new event loop"""
-        new_loop = asyncio.new_event_loop()
-        try:
-            asyncio.set_event_loop(new_loop)
-            context_builder = ContextBuilder(
-                source_id=source_id,
-                include_insights=True,
-                include_notes=False,  # Focus on source-specific content
-                max_tokens=50000,  # Reasonable limit for source context
-            )
-            return new_loop.run_until_complete(context_builder.build())
-        finally:
-            new_loop.close()
-            asyncio.set_event_loop(None)
-
-    # Get the built context
-    try:
-        # Try to get the current event loop
-        asyncio.get_running_loop()
-        # If we're in an event loop, run in a thread with a new loop
-        import concurrent.futures
-
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(build_context)
-            context_data = future.result()
-    except RuntimeError:
-        # No event loop running, safe to create a new one
-        context_data = build_context()
+    # Build source context — ContextBuilder.build() is already async
+    context_builder = ContextBuilder(
+        source_id=source_id,
+        include_insights=True,
+        include_notes=False,  # Focus on source-specific content
+        max_tokens=50000,  # Reasonable limit for source context
+    )
+    context_data = await context_builder.build()
 
     # Extract source and insights from context
     source = None
@@ -130,47 +101,16 @@ def _call_model_with_source_context_inner(
     )
     payload = [SystemMessage(content=system_prompt)] + state.get("messages", [])
 
-    # Handle async model provisioning from sync context
-    def run_in_new_loop():
-        """Run the async function in a new event loop"""
-        new_loop = asyncio.new_event_loop()
-        try:
-            asyncio.set_event_loop(new_loop)
-            return new_loop.run_until_complete(
-                provision_langchain_model(
-                    str(payload),
-                    config.get("configurable", {}).get("model_id")
-                    or state.get("model_override"),
-                    "chat",
-                    max_tokens=8192,
-                )
-            )
-        finally:
-            new_loop.close()
-            asyncio.set_event_loop(None)
+    # Provision model — already async, just await directly
+    model_id = (
+        config.get("configurable", {}).get("model_id") or state.get("model_override")
+    )
+    model = await provision_langchain_model(
+        str(payload), model_id, "chat", max_tokens=8192
+    )
 
-    try:
-        # Try to get the current event loop
-        asyncio.get_running_loop()
-        # If we're in an event loop, run in a thread with a new loop
-        import concurrent.futures
-
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(run_in_new_loop)
-            model = future.result()
-    except RuntimeError:
-        # No event loop running, safe to use asyncio.run()
-        model = asyncio.run(
-            provision_langchain_model(
-                str(payload),
-                config.get("configurable", {}).get("model_id")
-                or state.get("model_override"),
-                "chat",
-                max_tokens=8192,
-            )
-        )
-
-    ai_message = model.invoke(payload)
+    # Use async invoke so the HTTP call to the AI provider doesn't block
+    ai_message = await model.ainvoke(payload)
 
     # Clean thinking content from AI response (e.g., <think>...</think> tags)
     content = extract_text_content(ai_message.content)
@@ -240,16 +180,23 @@ def _format_source_context(context_data: Dict) -> str:
     return "\n".join(context_parts)
 
 
-# Create SQLite checkpointer
-conn = sqlite3.connect(
-    LANGGRAPH_CHECKPOINT_FILE,
-    check_same_thread=False,
-)
-memory = SqliteSaver(conn)
+async def _build_source_chat_graph():
+    """Build and return the compiled source chat graph."""
+    memory = await get_memory()
+    source_chat_state = StateGraph(SourceChatState)
+    source_chat_state.add_node("source_chat_agent", acall_model_with_source_context)
+    source_chat_state.add_edge(START, "source_chat_agent")
+    source_chat_state.add_edge("source_chat_agent", END)
+    return source_chat_state.compile(checkpointer=memory)
 
-# Create the StateGraph
-source_chat_state = StateGraph(SourceChatState)
-source_chat_state.add_node("source_chat_agent", call_model_with_source_context)
-source_chat_state.add_edge(START, "source_chat_agent")
-source_chat_state.add_edge("source_chat_agent", END)
-source_chat_graph = source_chat_state.compile(checkpointer=memory)
+
+# Lazy singleton
+_source_chat_graph = None
+
+
+async def get_source_chat_graph():
+    """Return the compiled source chat graph (lazy async init)."""
+    global _source_chat_graph
+    if _source_chat_graph is None:
+        _source_chat_graph = await _build_source_chat_graph()
+    return _source_chat_graph

@@ -114,6 +114,7 @@ desktop.ini
 
 # Log files
 *.log
+vps_*.txt
 
 # Database files
 *.db

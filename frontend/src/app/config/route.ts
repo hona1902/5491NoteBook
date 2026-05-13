@@ -23,9 +23,16 @@ import { NextRequest, NextResponse } from 'next/server'
  * This allows the same Docker image to work in different deployment scenarios.
  */
 export async function GET(request: NextRequest) {
-  // Priority 1: Check if API_URL is explicitly set
-  const envApiUrl = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL
+  // Priority 1: Check if API_URL is explicitly set (even to empty string)
+  // When API_URL="" (empty), return empty apiUrl so the client uses relative paths
+  // This is the correct behavior behind a reverse proxy (nginx/Cloudflare)
+  if ('API_URL' in process.env) {
+    return NextResponse.json({
+      apiUrl: process.env.API_URL || '',
+    })
+  }
 
+  const envApiUrl = process.env.NEXT_PUBLIC_API_URL
   if (envApiUrl) {
     return NextResponse.json({
       apiUrl: envApiUrl,
@@ -34,20 +41,23 @@ export async function GET(request: NextRequest) {
 
   // Priority 2: Auto-detect from request headers
   try {
-    // Get the protocol (http or https)
-    // Check X-Forwarded-Proto first (for reverse proxies), then fallback to request scheme
-    const proto = request.headers.get('x-forwarded-proto') ||
-                  request.nextUrl.protocol.replace(':', '') ||
-                  'http'
+    const forwardedProto = request.headers.get('x-forwarded-proto')
 
-    // Get the host header (includes port if non-standard)
+    // If request came through a reverse proxy, use relative paths
+    // The proxy handles routing /api/* to the backend
+    if (forwardedProto) {
+      console.log('[runtime-config] Reverse proxy detected (X-Forwarded-Proto), using relative paths')
+      return NextResponse.json({
+        apiUrl: '',
+      })
+    }
+
+    // Direct access (no reverse proxy) - auto-detect with port 5055
+    const proto = request.nextUrl.protocol.replace(':', '') || 'http'
     const hostHeader = request.headers.get('host')
 
     if (hostHeader) {
-      // Extract just the hostname (remove port if present)
       const hostname = hostHeader.split(':')[0]
-
-      // Construct the API URL with port 5055
       const apiUrl = `${proto}://${hostname}:5055`
 
       console.log(`[runtime-config] Auto-detected API URL: ${apiUrl} (proto=${proto}, host=${hostHeader})`)
