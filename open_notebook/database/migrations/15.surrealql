@@ -1,0 +1,24 @@
+-- Migration 15: Add app_user table and ownership fields for multi-user auth
+
+DEFINE TABLE app_user SCHEMAFULL;
+DEFINE FIELD username ON app_user TYPE string ASSERT $value != NONE;
+DEFINE FIELD email ON app_user TYPE string ASSERT $value != NONE;
+DEFINE FIELD password_hash ON app_user TYPE string;
+DEFINE FIELD role ON app_user TYPE string DEFAULT "user" ASSERT $value IN ["admin", "user"];
+DEFINE FIELD is_active ON app_user TYPE bool DEFAULT true;
+DEFINE FIELD created_at ON app_user TYPE datetime DEFAULT time::now();
+DEFINE FIELD updated_at ON app_user TYPE datetime DEFAULT time::now();
+DEFINE FIELD last_login_at ON app_user TYPE option<datetime>;
+DEFINE INDEX app_user_username_idx ON app_user FIELDS username UNIQUE;
+DEFINE INDEX app_user_email_idx ON app_user FIELDS email UNIQUE;
+
+-- Add owner_id to note
+DEFINE FIELD IF NOT EXISTS owner_id ON note TYPE option<record<app_user>>;
+DEFINE INDEX note_owner_idx ON note FIELDS owner_id;
+
+-- Add owner_id to chat_session
+DEFINE FIELD IF NOT EXISTS owner_id ON chat_session TYPE option<record<app_user>>;
+DEFINE INDEX chat_session_owner_idx ON chat_session FIELDS owner_id;
+
+-- Add created_by to notebook
+DEFINE FIELD IF NOT EXISTS created_by ON notebook TYPE option<record<app_user>>;

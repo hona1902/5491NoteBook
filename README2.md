@@ -708,12 +708,16 @@ Open Notebook is MIT licensed. See the [LICENSE](LICENSE) file for details.
 [SurrealDB]: https://img.shields.io/badge/SurrealDB-FF5E00?style=for-the-badge&logo=databricks&logoColor=white
 [SurrealDB-url]: https://surrealdb.com/
 
+# Chạy local
 docker compose up -d surrealdb
+
 backend: uv run --env-file .env python run_api.py
 woker: uv run --env-file .env surreal-commands-worker --import-modules commands
 frontend: cd frontend && npm run dev
+
 git add . && git commit -m "Update chat components and source chat API" && git push origin main
-Kéo code về: git pull origin main
+
+# Kéo code về: git pull origin main
 Bước 1: Truy cập vào VPS
 ssh root@your-server-ip
 Bước 2: Di chuyển vào thư mục Open Notebook

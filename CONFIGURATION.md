@@ -14,7 +14,7 @@ All configuration documentation has been consolidated into the new documentation
 - **Environment Variables Reference** → [Environment Reference](docs/5-CONFIGURATION/environment-reference.md)
 - **Database Configuration** → [Database Setup](docs/5-CONFIGURATION/database.md)
 - **Server Configuration** → [Server Settings](docs/5-CONFIGURATION/server.md)
-- **Security Setup** → [Security Configuration](docs/5-CONFIGURATION/security.md)
+- **Security Setup** → [Security & Authentication](docs/5-CONFIGURATION/security.md)
 - **Reverse Proxy** → [Reverse Proxy Setup](docs/5-CONFIGURATION/reverse-proxy.md)
 - **Advanced Tuning** → [Advanced Configuration](docs/5-CONFIGURATION/advanced.md)
 

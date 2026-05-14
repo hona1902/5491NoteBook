@@ -15,9 +15,11 @@ from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
 
 class Notebook(ObjectModel):
     table_name: ClassVar[str] = "notebook"
+    nullable_fields: ClassVar[set[str]] = {"created_by"}
     name: str
     description: str
     archived: Optional[bool] = False
+    created_by: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -273,11 +275,12 @@ class SourceInsight(ObjectModel):
             logger.exception(e)
             raise DatabaseOperationError(e)
 
-    async def save_as_note(self, notebook_id: Optional[str] = None) -> Any:
+    async def save_as_note(self, notebook_id: Optional[str] = None, owner_id: Optional[str] = None) -> Any:
         source = await self.get_source()
         note = Note(
             title=f"{self.insight_type} from source {source.title}",
             content=self.content,
+            owner_id=owner_id,
         )
         await note.save()
         if notebook_id:
@@ -556,9 +559,21 @@ class Source(ObjectModel):
 
 class Note(ObjectModel):
     table_name: ClassVar[str] = "note"
+    nullable_fields: ClassVar[set[str]] = {"owner_id"}
     title: Optional[str] = None
     note_type: Optional[Literal["human", "ai"]] = None
     content: Optional[str] = None
+    owner_id: Optional[str] = None
+
+    @field_validator("owner_id", mode="before")
+    @classmethod
+    def parse_owner_id(cls, value):
+        """Parse owner_id to string format when loading from DB (RecordID -> str)"""
+        if value is None:
+            return None
+        if isinstance(value, RecordID):
+            return str(value)
+        return str(value) if value else None
 
     @field_validator("content")
     @classmethod
@@ -566,6 +581,13 @@ class Note(ObjectModel):
         if v is not None and not v.strip():
             raise InvalidInputError("Note content cannot be empty")
         return v
+
+    def _prepare_save_data(self) -> dict:
+        """Override to ensure owner_id is RecordID format for database"""
+        data = super()._prepare_save_data()
+        if data.get("owner_id") is not None:
+            data["owner_id"] = ensure_record_id(data["owner_id"])
+        return data
 
     async def save(self) -> Optional[str]:
         """
@@ -612,9 +634,27 @@ class Note(ObjectModel):
 
 class ChatSession(ObjectModel):
     table_name: ClassVar[str] = "chat_session"
-    nullable_fields: ClassVar[set[str]] = {"model_override"}
+    nullable_fields: ClassVar[set[str]] = {"model_override", "owner_id"}
     title: Optional[str] = None
     model_override: Optional[str] = None
+    owner_id: Optional[str] = None
+
+    @field_validator("owner_id", mode="before")
+    @classmethod
+    def parse_owner_id(cls, value):
+        """Parse owner_id to string format when loading from DB (RecordID -> str)"""
+        if value is None:
+            return None
+        if isinstance(value, RecordID):
+            return str(value)
+        return str(value) if value else None
+
+    def _prepare_save_data(self) -> dict:
+        """Override to ensure owner_id is RecordID format for database"""
+        data = super()._prepare_save_data()
+        if data.get("owner_id") is not None:
+            data["owner_id"] = ensure_record_id(data["owner_id"])
+        return data
 
     async def relate_to_notebook(self, notebook_id: str) -> Any:
         if not notebook_id:

@@ -10,9 +10,12 @@ import { useNotebooks } from '@/lib/hooks/use-notebooks'
 import { CreateNotebookDialog } from '@/components/notebooks/CreateNotebookDialog'
 import { Input } from '@/components/ui/input'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useAuthStore } from '@/lib/stores/auth-store'
 
 export default function NotebooksPage() {
   const { t } = useTranslation()
+  const { user } = useAuthStore()
+  const isAdmin = user?.role === 'admin'
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const { data: notebooks, isLoading, refetch } = useNotebooks(false)
@@ -69,10 +72,12 @@ export default function NotebooksPage() {
               aria-label={t('common.accessibility.searchNotebooks') || "Search notebooks"}
               className="w-full sm:w-64"
             />
-            <Button onClick={() => setCreateDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              {t('notebooks.newNotebook')}
-            </Button>
+            {isAdmin && (
+              <Button onClick={() => setCreateDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                {t('notebooks.newNotebook')}
+              </Button>
+            )}
           </div>
         </div>
         

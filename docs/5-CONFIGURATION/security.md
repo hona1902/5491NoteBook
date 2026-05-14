@@ -1,58 +1,96 @@
 # Security Configuration
 
-Protect your Open Notebook deployment with password authentication and production hardening.
+Protect your Open Notebook deployment with JWT-based multi-user authentication and production hardening.
+
+---
+
+## Authentication System
+
+Open Notebook uses JWT (JSON Web Token) authentication with multi-user support. Each user has their own account with role-based access control.
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| Multi-user | Individual accounts with username/email login |
+| Role-based access | `admin` and `user` roles |
+| JWT tokens | Stateless authentication with configurable expiry |
+| Password hashing | Argon2id (memory-hard, resistant to GPU attacks) |
+| Data isolation | Users only see their own notes and chat sessions |
+| Admin bootstrap | First admin created automatically from environment variables |
+
+### Roles
+
+| Role | Permissions |
+|------|-------------|
+| `admin` | Create/edit/delete notebooks, manage users, full access |
+| `user` | View notebooks, create notes/chats (own data only) |
+
+---
+
+## Quick Setup
+
+### Required Environment Variables
+
+```yaml
+# docker-compose.yml
+environment:
+  # REQUIRED: Secret key for signing JWT tokens
+  - JWT_SECRET_KEY=your-random-secret-string-here
+
+  # REQUIRED: First admin account (created on empty database)
+  - ADMIN_USERNAME=admin
+  - ADMIN_EMAIL=admin@example.com
+  - ADMIN_PASSWORD=your-secure-admin-password
+
+  # Optional: Token expiry (default: 24 hours)
+  # - JWT_ACCESS_TOKEN_EXPIRE_HOURS=24
+```
+
+### First-Time Setup
+
+1. Set the environment variables above in your `docker-compose.yml` or `.env` file
+2. Start the application — the admin account is created automatically on first boot
+3. Log in at the web UI with your admin credentials
+4. Create additional users via **Admin → Users** in the sidebar
+
+### Generating a JWT Secret
+
+```bash
+# Linux/macOS
+openssl rand -base64 32
+
+# Python
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Use a unique, random string of at least 32 characters. Never reuse secrets across deployments.
 
 ---
 
 ## API Key Encryption
 
-Open Notebook encrypts API keys stored in the database using Fernet symmetric encryption (AES-128-CBC with HMAC-SHA256).
-
-### Configuration Methods
-
-| Method | Documentation |
-|--------|---------------|
-| **Settings UI** | [API Configuration Guide](../3-USER-GUIDE/api-configuration.md) |
-| **Environment Variables** | This page (below) |
+Open Notebook encrypts AI provider API keys stored in the database using Fernet symmetric encryption (AES-128-CBC with HMAC-SHA256).
 
 ### Setup
 
 Set the encryption key to any secret string:
 
 ```bash
-# .env or docker.env
+# .env or docker-compose.yml
 OPEN_NOTEBOOK_ENCRYPTION_KEY=my-secret-passphrase
 ```
 
 Any string works — it will be securely derived via SHA-256 internally. Use a strong passphrase for production deployments.
 
-### Default Credentials
-
-| Setting | Default | Security Level |
-|---------|---------|----------------|
-| Password | `open-notebook-change-me` | Development only |
-| Encryption Key | **None** (must be configured) | Required for API key storage |
-
-**The encryption key has no default.** You must set `OPEN_NOTEBOOK_ENCRYPTION_KEY` before using the API key configuration feature. Without it, encrypting/decrypting API keys will fail.
+**The encryption key has no default.** You must set `OPEN_NOTEBOOK_ENCRYPTION_KEY` before using the API key configuration feature.
 
 ### Docker Secrets Support
 
-Both settings support Docker secrets via `_FILE` suffix:
-
 ```yaml
 environment:
-  - OPEN_NOTEBOOK_PASSWORD_FILE=/run/secrets/app_password
   - OPEN_NOTEBOOK_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key
 ```
-
-### Security Notes
-
-| Scenario | Behavior |
-|----------|----------|
-| Key configured | API keys encrypted with your key |
-| No key configured | Encryption/decryption will fail (key is required) |
-| Key changed | Old encrypted keys become unreadable |
-| Legacy data | Unencrypted keys still work (graceful fallback) |
 
 ### Key Management
 
@@ -63,100 +101,34 @@ environment:
 
 ---
 
-## When to Use Password Protection
+## API Authentication
 
-### Use it for:
-- Public cloud deployments (PikaPods, Railway, DigitalOcean)
-- Shared network environments
-- Any deployment accessible beyond localhost
-
-### You can skip it for:
-- Local development on your machine
-- Private, isolated networks
-- Single-user local setups
-
----
-
-## Quick Setup
-
-### Docker Deployment
-
-```yaml
-# Add to your docker-compose.yml (requires surrealdb service, see installation guide)
-services:
-  open_notebook:
-    image: lfnovo/open_notebook:v1-latest
-    pull_policy: always
-    environment:
-      - OPEN_NOTEBOOK_ENCRYPTION_KEY=your-secret-encryption-key
-      - OPEN_NOTEBOOK_PASSWORD=your_secure_password
-    # ... rest of config
-```
-
-Or using environment file:
+### Login
 
 ```bash
-# docker.env
-OPEN_NOTEBOOK_ENCRYPTION_KEY=your-secret-encryption-key
-OPEN_NOTEBOOK_PASSWORD=your_secure_password
+# Get a JWT token
+curl -X POST http://localhost:5055/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username_or_email": "admin", "password": "your-password"}'
+
+# Response:
+# {"access_token": "eyJ...", "token_type": "bearer", "user": {...}}
 ```
 
-> **Important**: The encryption key is **required** for credential storage. Without it, you cannot save AI provider credentials via the Settings UI. If you change or lose the encryption key, all stored credentials become unreadable.
-
-### Development Setup
+### Authenticated Requests
 
 ```bash
-# .env
-OPEN_NOTEBOOK_PASSWORD=your_secure_password
-```
+# Use the token in subsequent requests
+TOKEN="eyJ..."
 
----
-
-## Password Requirements
-
-### Good Passwords
-
-```bash
-# Strong: 20+ characters, mixed case, numbers, symbols
-OPEN_NOTEBOOK_PASSWORD=MySecure2024!Research#Tool
-OPEN_NOTEBOOK_PASSWORD=Notebook$Dev$2024$Strong!
-
-# Generated (recommended)
-OPEN_NOTEBOOK_PASSWORD=$(openssl rand -base64 24)
-```
-
-### Bad Passwords
-
-```bash
-# DON'T use these
-OPEN_NOTEBOOK_PASSWORD=password123
-OPEN_NOTEBOOK_PASSWORD=opennotebook
-OPEN_NOTEBOOK_PASSWORD=admin
-```
-
----
-
-## How It Works
-
-### Frontend Protection
-
-1. Login form appears on first visit
-2. Password stored in browser session
-3. Session persists until browser closes
-4. Clear browser data to log out
-
-### API Protection
-
-All API endpoints require authentication:
-
-```bash
-# Authenticated request
-curl -H "Authorization: Bearer your_password" \
+curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:5055/api/notebooks
 
-# Unauthenticated (will fail)
-curl http://localhost:5055/api/notebooks
-# Returns: {"detail": "Missing authorization header"}
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Notebook", "description": "Research notes"}' \
+  http://localhost:5055/api/notebooks
 ```
 
 ### Unprotected Endpoints
@@ -166,77 +138,67 @@ These work without authentication:
 - `/health` - System health check
 - `/docs` - API documentation
 - `/openapi.json` - OpenAPI spec
+- `/api/auth/login` - Login endpoint
 
 ---
 
-## API Authentication Examples
+## User Management
 
-### curl
+### Admin Panel
+
+Admins can manage users through the web UI at **Admin → Users**:
+
+- Create new users (username, email, password, role)
+- Toggle user active/inactive status
+- Reset user passwords
+- Delete users (cannot delete the last admin)
+
+### Admin API Endpoints
 
 ```bash
-# List notebooks
-curl -H "Authorization: Bearer your_password" \
-  http://localhost:5055/api/notebooks
+TOKEN="eyJ..."  # Must be an admin token
 
-# Create notebook
-curl -X POST \
-  -H "Authorization: Bearer your_password" \
+# List all users
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:5055/api/admin/users
+
+# Create user
+curl -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name": "My Notebook", "description": "Research notes"}' \
-  http://localhost:5055/api/notebooks
+  -d '{"username": "researcher", "email": "r@example.com", "password": "secure123", "role": "user"}' \
+  http://localhost:5055/api/admin/users
 
-# Upload file
-curl -X POST \
-  -H "Authorization: Bearer your_password" \
-  -F "file=@document.pdf" \
-  http://localhost:5055/api/sources/upload
+# Deactivate user
+curl -X PATCH -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"is_active": false}' \
+  http://localhost:5055/api/admin/users/app_user:abc123
+
+# Reset password
+curl -X PATCH -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"new_password": "new-secure-password"}' \
+  http://localhost:5055/api/admin/users/app_user:abc123/password
+
+# Delete user
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  http://localhost:5055/api/admin/users/app_user:abc123
 ```
 
-### Python
+---
 
-```python
-import requests
+## Data Isolation
 
-class OpenNotebookClient:
-    def __init__(self, base_url: str, password: str):
-        self.base_url = base_url
-        self.headers = {"Authorization": f"Bearer {password}"}
+Each user's data is isolated by default:
 
-    def get_notebooks(self):
-        response = requests.get(
-            f"{self.base_url}/api/notebooks",
-            headers=self.headers
-        )
-        return response.json()
+| Resource | Behavior |
+|----------|----------|
+| Notes | Users only see/edit their own notes |
+| Chat sessions | Users only see/edit their own chats |
+| Notebooks | All users can view; only admins can create/edit/delete |
+| Sources | Shared within notebooks (visible to all users with notebook access) |
 
-    def create_notebook(self, name: str, description: str = None):
-        response = requests.post(
-            f"{self.base_url}/api/notebooks",
-            headers=self.headers,
-            json={"name": name, "description": description}
-        )
-        return response.json()
-
-# Usage
-client = OpenNotebookClient("http://localhost:5055", "your_password")
-notebooks = client.get_notebooks()
-```
-
-### JavaScript/TypeScript
-
-```javascript
-const API_URL = 'http://localhost:5055';
-const PASSWORD = 'your_password';
-
-async function getNotebooks() {
-  const response = await fetch(`${API_URL}/api/notebooks`, {
-    headers: {
-      'Authorization': `Bearer ${PASSWORD}`
-    }
-  });
-  return response.json();
-}
-```
+Attempting to access another user's notes or chat sessions returns HTTP 404 (not 403), preventing information leakage about resource existence.
 
 ---
 
@@ -245,15 +207,19 @@ async function getNotebooks() {
 ### Docker Security
 
 ```yaml
-# Add to your docker-compose.yml (requires surrealdb service, see installation guide)
 services:
   open_notebook:
     image: lfnovo/open_notebook:v1-latest
     pull_policy: always
     ports:
       - "127.0.0.1:8502:8502"  # Bind to localhost only
+      - "127.0.0.1:5055:5055"
     environment:
-      - OPEN_NOTEBOOK_PASSWORD=your_secure_password
+      - OPEN_NOTEBOOK_ENCRYPTION_KEY=your-strong-secret-key
+      - JWT_SECRET_KEY=your-random-jwt-secret
+      - ADMIN_USERNAME=admin
+      - ADMIN_EMAIL=admin@yourdomain.com
+      - ADMIN_PASSWORD=your-secure-admin-password
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -274,108 +240,82 @@ sudo ufw allow 443/tcp
 sudo ufw deny 8502/tcp   # Block direct access
 sudo ufw deny 5055/tcp   # Block direct API access
 sudo ufw enable
-
-# iptables
-iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-iptables -A INPUT -p tcp --dport 443 -j ACCEPT
-iptables -A INPUT -p tcp --dport 8502 -j DROP
-iptables -A INPUT -p tcp --dport 5055 -j DROP
 ```
 
 ### Reverse Proxy with SSL
 
 See [Reverse Proxy Configuration](reverse-proxy.md) for complete nginx/Caddy/Traefik setup with HTTPS.
 
+### Security Checklist
+
+- [ ] Set a strong, unique `JWT_SECRET_KEY` (32+ characters)
+- [ ] Set a strong `ADMIN_PASSWORD` (not the default)
+- [ ] Set `OPEN_NOTEBOOK_ENCRYPTION_KEY` for credential storage
+- [ ] Use HTTPS via reverse proxy (JWT tokens are sent in headers)
+- [ ] Bind ports to localhost only (use reverse proxy for external access)
+- [ ] Change default SurrealDB credentials (`SURREAL_USER`, `SURREAL_PASSWORD`)
+- [ ] Keep containers and dependencies updated
+- [ ] Monitor logs for suspicious activity
+
 ---
 
-## Security Limitations
-
-Open Notebook's password protection provides **basic access control**, not enterprise-grade security:
+## Security Properties
 
 | Feature | Status |
 |---------|--------|
-| Password transmission | Plain text (use HTTPS!) |
-| Password storage | In memory |
-| User management | Single password for all |
-| Session timeout | None (until browser close) |
-| Rate limiting | None |
+| Token format | JWT (HS256) |
+| Token expiry | 24 hours (configurable) |
+| Password hashing | Argon2id |
+| Data isolation | Per-user (owner_id enforcement) |
+| Role-based access | Admin / User roles |
+| Login error messages | Generic (no user enumeration) |
+| Rate limiting | None (add at proxy layer) |
 | Audit logging | None |
 
 ### Risk Mitigation
 
-1. **Always use HTTPS** - Encrypt traffic with TLS
-2. **Strong passwords** - 20+ characters, complex
-3. **Network security** - Firewall, VPN for sensitive deployments
-4. **Regular updates** - Keep containers and dependencies updated
-5. **Monitoring** - Check logs for suspicious activity
-6. **Backups** - Regular backups of data
-
----
-
-## Enterprise Considerations
-
-For deployments requiring advanced security:
-
-| Need | Solution |
-|------|----------|
-| SSO/OAuth | Implement OAuth2/SAML proxy |
-| Role-based access | Custom middleware |
-| Audit logging | Log aggregation service |
-| Rate limiting | API gateway or nginx |
-| Data encryption | Encrypt volumes at rest |
-| Network segmentation | Docker networks, VPC |
+1. **Always use HTTPS** — JWT tokens in headers must be encrypted in transit
+2. **Strong JWT secret** — 32+ random characters, unique per deployment
+3. **Strong admin password** — Change from default immediately
+4. **Network security** — Firewall, VPN for sensitive deployments
+5. **Regular updates** — Keep containers and dependencies updated
+6. **Backups** — Regular backups of data and encryption keys
 
 ---
 
 ## Troubleshooting
 
-### Password Not Working
+### Cannot Log In
 
-```bash
-# Check env var is set
-docker exec open-notebook env | grep OPEN_NOTEBOOK_PASSWORD
-
-# Check logs
-docker logs open-notebook | grep -i auth
-
-# Test API directly
-curl -H "Authorization: Bearer your_password" \
-  http://localhost:5055/health
-```
+1. Check that `ADMIN_USERNAME` and `ADMIN_PASSWORD` are set in environment
+2. Check API logs: `docker logs <container> | grep -i auth`
+3. Verify the admin was bootstrapped: look for "Created initial admin user" in startup logs
+4. Try logging in with email instead of username
 
 ### 401 Unauthorized Errors
 
 ```bash
-# Check header format
-curl -v -H "Authorization: Bearer your_password" \
-  http://localhost:5055/api/notebooks
+# Test login
+curl -X POST http://localhost:5055/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username_or_email": "admin", "password": "your-password"}'
 
-# Verify password matches
-echo "Password length: $(echo -n $OPEN_NOTEBOOK_PASSWORD | wc -c)"
+# Check token works
+curl -H "Authorization: Bearer <token-from-login>" \
+  http://localhost:5055/api/auth/me
 ```
 
-### Cannot Access After Setting Password
+### "Account is disabled" Error
 
-1. Clear browser cache and cookies
-2. Try incognito/private mode
-3. Check browser console for errors
-4. Verify password is correct in environment
+An admin has deactivated the user account. Contact your administrator to re-enable it.
 
-### Security Testing
+### JWT_SECRET_KEY Not Set
 
-```bash
-# Without password (should fail)
-curl http://localhost:5055/api/notebooks
-# Expected: {"detail": "Missing authorization header"}
+The application will fail to start with a `RuntimeError` if `JWT_SECRET_KEY` is not set. Add it to your environment configuration.
 
-# With correct password (should succeed)
-curl -H "Authorization: Bearer your_password" \
-  http://localhost:5055/api/notebooks
+### Admin Bootstrap Not Running
 
-# Health check (should work without password)
-curl http://localhost:5055/health
-```
+The admin is only created when the `app_user` table is empty. If you already have users, the bootstrap is skipped. Create additional admins via the admin panel or API.
 
 ---
 

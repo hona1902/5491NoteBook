@@ -4,7 +4,7 @@ import time
 
 BASE_URL = "https://sotay5491.io.vn/api/api"
 NOTEBOOK_ID = "notebook:0iurid12q8ccdb53xve5"
-NUM_SESSIONS = 10
+NUM_SESSIONS = 30
 MESSAGE = "Xin chào, hãy tóm tắt nội dung chính của notebook này."
 PASSWORD = "HoaiNam190291"
 AUTH_HEADERS = {"Authorization": f"Bearer {PASSWORD}"}

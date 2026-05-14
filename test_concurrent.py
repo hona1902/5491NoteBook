@@ -56,7 +56,7 @@ for i in range(NUM_REQUESTS):
         session_ids.append(data["id"])
         log(f"  ✓ Session {i}: {data['id']}")
     except:
-        log(f"  ✗ Session {i} FAILED: {result[:100]}")
+        log(f"  ✗ Session {i} FAILED: {result[:150]}")
         session_ids.append(None)
 
 valid_count = sum(1 for s in session_ids if s)
@@ -87,7 +87,6 @@ for i, sid in enumerate(session_ids):
         "message": QUESTIONS[i],
         "context": {"sources": [], "notes": [], "insights": []},
     })
-    # Use the public HTTPS endpoint through Cloudflare
     script_lines.append(
         f'curl -s -k --max-time 120 -X POST '
         f'-H "Authorization: Bearer {AUTH}" '

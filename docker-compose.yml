@@ -2,7 +2,7 @@ services:
   surrealdb:
     image: surrealdb/surrealdb:v2
     command: start --log info --user root --pass root rocksdb:/mydata/mydatabase.db
-    user: root  # Required for bind mounts on Linux
+    user: root # Required for bind mounts on Linux
     ports:
       - "8000:8000"
     volumes:
@@ -15,12 +15,12 @@ services:
   open_notebook:
     image: lfnovo/open_notebook:v1-latest
     ports:
-      - "8502:8502"  # Web UI
-      - "5055:5055"  # REST API
+      - "8502:8502" # Web UI
+      - "5055:5055" # REST API
     environment:
       # REQUIRED: Change this to your own secret string
       # This encrypts your API keys in the database
-      - OPEN_NOTEBOOK_ENCRYPTION_KEY=change-me-to-a-secret-string
+      - OPEN_NOTEBOOK_ENCRYPTION_KEY=1234567890qwerty
 
       # Database connection (default values - no need to change)
       - SURREAL_URL=ws://surrealdb:8000/rpc
@@ -28,6 +28,15 @@ services:
       - SURREAL_PASSWORD=root
       - SURREAL_NAMESPACE=open_notebook
       - SURREAL_DATABASE=open_notebook
+
+      # Authentication (JWT-based multi-user auth)
+      - JWT_SECRET_KEY=change-me-to-a-random-secret
+      # - JWT_ACCESS_TOKEN_EXPIRE_HOURS=24
+
+      # Admin bootstrap (creates first admin on empty database)
+      - ADMIN_USERNAME=admin
+      - ADMIN_EMAIL=admin@example.com
+      - ADMIN_PASSWORD=change-me-to-a-secure-password
     volumes:
       - ./notebook_data:/app/data
     depends_on:

@@ -684,3 +684,35 @@ class NotebookDeleteResponse(BaseModel):
     unlinked_sources: int = Field(
         ..., description="Number of sources unlinked from notebook"
     )
+
+
+# Auth models
+class LoginRequest(BaseModel):
+    username_or_email: str = Field(..., description="Username or email")
+    password: str = Field(..., description="Password")
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: Dict[str, Any]
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., description="Current password")
+    new_password: str = Field(..., min_length=8, description="New password")
+
+
+# Admin user management models
+class AdminCreateUserRequest(BaseModel):
+    username: str = Field(..., min_length=3, description="Username")
+    email: str = Field(..., description="Email address")
+    password: str = Field(..., min_length=8, description="Password")
+    role: str = Field(default="user", description="User role (admin or user)")
+
+
+class AdminUpdateUserRequest(BaseModel):
+    username: Optional[str] = Field(None, min_length=3, description="Username")
+    email: Optional[str] = Field(None, description="Email address")
+    role: Optional[str] = Field(None, description="User role (admin or user)")
+    is_active: Optional[bool] = Field(None, description="Whether user is active")

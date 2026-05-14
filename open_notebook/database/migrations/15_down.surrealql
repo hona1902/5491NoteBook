@@ -1,0 +1,8 @@
+-- Rollback migration 15: Remove app_user table and ownership fields
+
+REMOVE INDEX note_owner_idx ON TABLE note;
+REMOVE FIELD owner_id ON TABLE note;
+REMOVE INDEX chat_session_owner_idx ON TABLE chat_session;
+REMOVE FIELD owner_id ON TABLE chat_session;
+REMOVE FIELD created_by ON TABLE notebook;
+REMOVE TABLE app_user;

@@ -1,10 +1,13 @@
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 
+from api.auth import get_current_user
 from api.models import NoteCreate, NoteResponse, NoteUpdate
+from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Note
+from open_notebook.domain.user import AppUser
 from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
@@ -13,20 +16,24 @@ router = APIRouter()
 @router.get("/notes", response_model=List[NoteResponse])
 async def get_notes(
     notebook_id: Optional[str] = Query(None, description="Filter by notebook ID"),
+    current_user: AppUser = Depends(get_current_user),
 ):
     """Get all notes with optional notebook filtering."""
     try:
         if notebook_id:
-            # Get notes for a specific notebook
             from open_notebook.domain.notebook import Notebook
 
             notebook = await Notebook.get(notebook_id)
             if not notebook:
                 raise HTTPException(status_code=404, detail="Notebook not found")
             notes = await notebook.get_notes()
+            notes = [n for n in notes if getattr(n, "owner_id", None) == current_user.id]
         else:
-            # Get all notes
-            notes = await Note.get_all(order_by="updated desc")
+            results = await repo_query(
+                "SELECT * FROM note WHERE owner_id = $user_id ORDER BY updated DESC",
+                {"user_id": ensure_record_id(current_user.id)},
+            )
+            notes = [Note(**r) for r in results] if results else []
 
         return [
             NoteResponse(
@@ -47,27 +54,28 @@ async def get_notes(
 
 
 @router.post("/notes", response_model=NoteResponse)
-async def create_note(note_data: NoteCreate):
+async def create_note(
+    note_data: NoteCreate,
+    current_user: AppUser = Depends(get_current_user),
+):
     """Create a new note."""
     try:
-        # Auto-generate title if not provided and it's an AI note
         title = note_data.title
         if not title and note_data.note_type == "ai" and note_data.content:
             from open_notebook.graphs.prompt import graph as prompt_graph
 
             prompt = "Based on the Note below, please provide a Title for this content, with max 15 words"
             result = await prompt_graph.ainvoke(
-                {  # type: ignore[arg-type]
+                {
                     "input_text": note_data.content,
                     "prompt": prompt,
                 }
             )
             title = result.get("output", "Untitled Note")
 
-        # Validate note_type
         note_type: Optional[Literal["human", "ai"]] = None
         if note_data.note_type in ("human", "ai"):
-            note_type = note_data.note_type  # type: ignore[assignment]
+            note_type = note_data.note_type
         elif note_data.note_type is not None:
             raise HTTPException(
                 status_code=400, detail="note_type must be 'human' or 'ai'"
@@ -77,10 +85,10 @@ async def create_note(note_data: NoteCreate):
             title=title,
             content=note_data.content,
             note_type=note_type,
+            owner_id=current_user.id,
         )
         command_id = await new_note.save()
 
-        # Add to notebook if specified
         if note_data.notebook_id:
             from open_notebook.domain.notebook import Notebook
 
@@ -108,11 +116,17 @@ async def create_note(note_data: NoteCreate):
 
 
 @router.get("/notes/{note_id}", response_model=NoteResponse)
-async def get_note(note_id: str):
+async def get_note(
+    note_id: str,
+    current_user: AppUser = Depends(get_current_user),
+):
     """Get a specific note by ID."""
     try:
         note = await Note.get(note_id)
         if not note:
+            raise HTTPException(status_code=404, detail="Note not found")
+
+        if getattr(note, "owner_id", None) != current_user.id:
             raise HTTPException(status_code=404, detail="Note not found")
 
         return NoteResponse(
@@ -131,21 +145,27 @@ async def get_note(note_id: str):
 
 
 @router.put("/notes/{note_id}", response_model=NoteResponse)
-async def update_note(note_id: str, note_update: NoteUpdate):
+async def update_note(
+    note_id: str,
+    note_update: NoteUpdate,
+    current_user: AppUser = Depends(get_current_user),
+):
     """Update a note."""
     try:
         note = await Note.get(note_id)
         if not note:
             raise HTTPException(status_code=404, detail="Note not found")
 
-        # Update only provided fields
+        if getattr(note, "owner_id", None) != current_user.id:
+            raise HTTPException(status_code=404, detail="Note not found")
+
         if note_update.title is not None:
             note.title = note_update.title
         if note_update.content is not None:
             note.content = note_update.content
         if note_update.note_type is not None:
             if note_update.note_type in ("human", "ai"):
-                note.note_type = note_update.note_type  # type: ignore[assignment]
+                note.note_type = note_update.note_type
             else:
                 raise HTTPException(
                     status_code=400, detail="note_type must be 'human' or 'ai'"
@@ -172,11 +192,17 @@ async def update_note(note_id: str, note_update: NoteUpdate):
 
 
 @router.delete("/notes/{note_id}")
-async def delete_note(note_id: str):
+async def delete_note(
+    note_id: str,
+    current_user: AppUser = Depends(get_current_user),
+):
     """Delete a note."""
     try:
         note = await Note.get(note_id)
         if not note:
+            raise HTTPException(status_code=404, detail="Note not found")
+
+        if getattr(note, "owner_id", None) != current_user.id:
             raise HTTPException(status_code=404, detail="Note not found")
 
         await note.delete()

@@ -1,6 +1,6 @@
 import asyncio
 from open_notebook.database.connection import init_db
-from open_notebook.domain.notebook import Source, Asset
+from open_notebook.domain.notebook import Source
 
 async def create_test_sources():
     await init_db()

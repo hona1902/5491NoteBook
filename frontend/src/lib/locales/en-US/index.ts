@@ -192,7 +192,8 @@ export const enUS = {
   },
   auth: {
     loginTitle: "Open Notebook",
-    loginDesc: "Enter your password to access the application",
+    loginDesc: "Sign in to access the application",
+    usernamePlaceholder: "Username or email",
     passwordPlaceholder: "Password",
     signingIn: "Signing in...",
     signIn: "Sign In",
@@ -211,6 +212,8 @@ export const enUS = {
     transformations: "Transformations",
     transformation: "Transformation",
     settings: "Settings",
+    changePassword: "Change Password",
+    users: "Users",
     advanced: "Advanced",
     nav: "Navigation",
     language: "Toggle language",

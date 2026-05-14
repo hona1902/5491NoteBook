@@ -11,11 +11,24 @@ Comprehensive list of all environment variables available in Open Notebook.
 | `API_URL` | No | Auto-detected | URL where frontend reaches API (e.g., http://localhost:5055) |
 | `INTERNAL_API_URL` | No | http://localhost:5055 | Internal API URL for Next.js server-side proxying |
 | `API_CLIENT_TIMEOUT` | No | 300 | Client timeout in seconds (how long to wait for API response) |
-| `OPEN_NOTEBOOK_PASSWORD` | No | None | Password to protect Open Notebook instance |
 | `OPEN_NOTEBOOK_ENCRYPTION_KEY` | **Yes** | None | Secret string to encrypt credentials stored in database (any string works). **Required** for the credential system. Supports Docker secrets via `_FILE` suffix. |
 | `HOSTNAME` | No | `0.0.0.0` (in Docker) | Network interface for Next.js to bind to. Default `0.0.0.0` ensures accessibility from reverse proxies |
 
 > **Important**: `OPEN_NOTEBOOK_ENCRYPTION_KEY` is required for storing AI provider credentials via the Settings UI. Without it, you cannot save credentials. If you change or lose this key, all stored credentials become unreadable.
+
+---
+
+## Authentication (JWT)
+
+| Variable | Required? | Default | Description |
+|----------|-----------|---------|-------------|
+| `JWT_SECRET_KEY` | **Yes** | None | Secret key for signing JWT tokens. Must be set or the app will fail to start. Use a random string of 32+ characters. |
+| `JWT_ACCESS_TOKEN_EXPIRE_HOURS` | No | 24 | How long JWT tokens remain valid (in hours) |
+| `ADMIN_USERNAME` | No | None | Username for the initial admin account (created on first boot if `app_user` table is empty) |
+| `ADMIN_EMAIL` | No | None | Email for the initial admin account |
+| `ADMIN_PASSWORD` | No | None | Password for the initial admin account |
+
+> **Important**: `JWT_SECRET_KEY` is required. The application raises a `RuntimeError` on startup if it is not set. The `ADMIN_*` variables are only used once — when the database has no users — to bootstrap the first admin account.
 
 ---
 
@@ -146,7 +159,10 @@ Then configure AI providers via **Settings → API Keys** in the browser.
 ### Production Deployment
 ```
 OPEN_NOTEBOOK_ENCRYPTION_KEY=your-strong-secret-key
-OPEN_NOTEBOOK_PASSWORD=your-secure-password
+JWT_SECRET_KEY=your-random-jwt-secret-32-chars-min
+ADMIN_USERNAME=admin
+ADMIN_EMAIL=admin@yourdomain.com
+ADMIN_PASSWORD=your-secure-admin-password
 API_URL=https://mynotebook.example.com
 SURREAL_USER=production_user
 SURREAL_PASSWORD=secure_password
@@ -215,8 +231,11 @@ env | grep -E "^[A-Z_]+=" | sort
 ## Quick Setup Checklist
 
 - [ ] Set `OPEN_NOTEBOOK_ENCRYPTION_KEY` in docker-compose.yml
+- [ ] Set `JWT_SECRET_KEY` (random string, 32+ characters)
+- [ ] Set `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` for first admin
 - [ ] Set database credentials (`SURREAL_*`)
 - [ ] Start services
+- [ ] Log in with admin credentials
 - [ ] Open browser → Go to **Settings → API Keys**
 - [ ] **Add Credential** for your AI provider
 - [ ] **Test Connection** to verify

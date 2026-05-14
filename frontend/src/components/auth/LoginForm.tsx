@@ -14,6 +14,7 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 
 export function LoginForm() {
   const { t, language } = useTranslation()
+  const [usernameOrEmail, setUsernameOrEmail] = useState('')
   const [password, setPassword] = useState('')
   const { login, isLoading, error } = useAuth()
   const { authRequired, checkAuthRequired, hasHydrated, isAuthenticated } = useAuthStore()
@@ -21,7 +22,6 @@ export function LoginForm() {
   const [configInfo, setConfigInfo] = useState<{ apiUrl: string; version: string; buildTime: string } | null>(null)
   const router = useRouter()
 
-  // Load config info for debugging
   useEffect(() => {
     getConfig().then(cfg => {
       setConfigInfo({
@@ -34,7 +34,6 @@ export function LoginForm() {
     })
   }, [])
 
-  // Check if authentication is required on mount
   useEffect(() => {
     if (!hasHydrated) {
       return
@@ -44,19 +43,16 @@ export function LoginForm() {
       try {
         const required = await checkAuthRequired()
 
-        // If auth is not required, redirect to notebooks
         if (!required) {
           router.push('/notebooks')
         }
       } catch (error) {
         console.error('Error checking auth requirement:', error)
-        // On error, assume auth is required to be safe
       } finally {
         setIsCheckingAuth(false)
       }
     }
 
-    // If we already know auth status, use it
     if (authRequired !== null) {
       if (!authRequired && isAuthenticated) {
         router.push('/notebooks')
@@ -68,7 +64,6 @@ export function LoginForm() {
     }
   }, [hasHydrated, authRequired, checkAuthRequired, router, isAuthenticated])
 
-  // Show loading while checking if auth is required
   if (!hasHydrated || isCheckingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -77,7 +72,6 @@ export function LoginForm() {
     )
   }
 
-  // If we still don't know if auth is required (connection error), show error
   if (authRequired === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -127,12 +121,11 @@ export function LoginForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (password.trim()) {
+    if (usernameOrEmail.trim() && password.trim()) {
       try {
-        await login(password)
+        await login(usernameOrEmail, password)
       } catch (error) {
         console.error('Unhandled error during login:', error)
-        // The auth store should handle most errors, but this catches any unhandled ones
       }
     }
   }
@@ -150,11 +143,22 @@ export function LoginForm() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Input
+                type="text"
+                placeholder={t('auth.usernamePlaceholder')}
+                value={usernameOrEmail}
+                onChange={(e) => setUsernameOrEmail(e.target.value)}
+                disabled={isLoading}
+                autoComplete="username"
+              />
+            </div>
+            <div>
+              <Input
                 type="password"
                 placeholder={t('auth.passwordPlaceholder')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isLoading}
+                autoComplete="current-password"
               />
             </div>
 
@@ -168,7 +172,7 @@ export function LoginForm() {
             <Button
               type="submit"
               className="w-full"
-              disabled={isLoading || !password.trim()}
+              disabled={isLoading || !usernameOrEmail.trim() || !password.trim()}
             >
               {isLoading ? t('auth.signingIn') : t('auth.signIn')}
             </Button>

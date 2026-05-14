@@ -1,15 +1,20 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
+from api.auth import get_current_user
 from api.models import NoteResponse, SaveAsNoteRequest, SourceInsightResponse
 from open_notebook.domain.notebook import SourceInsight
+from open_notebook.domain.user import AppUser
 from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
 
 
 @router.get("/insights/{insight_id}", response_model=SourceInsightResponse)
-async def get_insight(insight_id: str):
+async def get_insight(
+    insight_id: str,
+    current_user: AppUser = Depends(get_current_user),
+):
     """Get a specific insight by ID."""
     try:
         insight = await SourceInsight.get(insight_id)
@@ -35,7 +40,10 @@ async def get_insight(insight_id: str):
 
 
 @router.delete("/insights/{insight_id}")
-async def delete_insight(insight_id: str):
+async def delete_insight(
+    insight_id: str,
+    current_user: AppUser = Depends(get_current_user),
+):
     """Delete a specific insight."""
     try:
         insight = await SourceInsight.get(insight_id)
@@ -53,15 +61,22 @@ async def delete_insight(insight_id: str):
 
 
 @router.post("/insights/{insight_id}/save-as-note", response_model=NoteResponse)
-async def save_insight_as_note(insight_id: str, request: SaveAsNoteRequest):
+async def save_insight_as_note(
+    insight_id: str,
+    request: SaveAsNoteRequest,
+    current_user: AppUser = Depends(get_current_user),
+):
     """Convert an insight to a note."""
     try:
         insight = await SourceInsight.get(insight_id)
         if not insight:
             raise HTTPException(status_code=404, detail="Insight not found")
 
-        # Use the existing save_as_note method from the domain model
-        note = await insight.save_as_note(request.notebook_id)
+        # Use the existing save_as_note method with owner_id for data isolation
+        note = await insight.save_as_note(
+            notebook_id=request.notebook_id,
+            owner_id=current_user.id,
+        )
 
         return NoteResponse(
             id=note.id or "",

@@ -8,6 +8,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/hooks/use-auth'
+import { useAuthStore } from '@/lib/stores/auth-store'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
 import {
@@ -41,44 +42,53 @@ import {
   Plus,
   Wrench,
   Command,
+  Users,
+  KeyRound,
 } from 'lucide-react'
 
-const getNavigation = (t: TFunction) => [
-  {
-    title: t('navigation.collect'),
-    items: [
-      { name: t('navigation.sources'), href: '/sources', icon: FileText },
-    ],
-  },
-  {
-    title: t('navigation.process'),
-    items: [
-      { name: t('navigation.notebooks'), href: '/notebooks', icon: Book },
-      { name: t('navigation.askAndSearch'), href: '/search', icon: Search },
-    ],
-  },
-  {
-    title: t('navigation.create'),
-    items: [
-      { name: t('navigation.podcasts'), href: '/podcasts', icon: Mic },
-    ],
-  },
-  {
-    title: t('navigation.manage'),
-    items: [
-      { name: t('navigation.models'), href: '/settings/api-keys', icon: Bot },
-      { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle },
-      { name: t('navigation.settings'), href: '/settings', icon: Settings },
-      { name: t('navigation.advanced'), href: '/advanced', icon: Wrench },
-    ],
-  },
-] as const
+const getNavigation = (t: TFunction, isAdmin: boolean) => {
+  const nav = [
+    {
+      title: t('navigation.collect'),
+      items: [
+        { name: t('navigation.sources'), href: '/sources', icon: FileText },
+      ],
+    },
+    {
+      title: t('navigation.process'),
+      items: [
+        { name: t('navigation.notebooks'), href: '/notebooks', icon: Book },
+        { name: t('navigation.askAndSearch'), href: '/search', icon: Search },
+      ],
+    },
+    {
+      title: t('navigation.create'),
+      items: [
+        { name: t('navigation.podcasts'), href: '/podcasts', icon: Mic },
+      ],
+    },
+    {
+      title: t('navigation.manage'),
+      items: [
+        { name: t('navigation.models'), href: '/settings/api-keys', icon: Bot },
+        { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle },
+        { name: t('navigation.settings'), href: '/settings', icon: Settings },
+        { name: t('navigation.changePassword'), href: '/settings/change-password', icon: KeyRound },
+        { name: t('navigation.advanced'), href: '/advanced', icon: Wrench },
+        ...(isAdmin ? [{ name: t('navigation.users'), href: '/admin/users', icon: Users }] : []),
+      ],
+    },
+  ]
+  return nav
+}
 
 type CreateTarget = 'source' | 'notebook' | 'podcast'
 
 export function AppSidebar() {
   const { t } = useTranslation()
-  const navigation = getNavigation(t)
+  const { user } = useAuthStore()
+  const isAdmin = user?.role === 'admin'
+  const navigation = getNavigation(t, isAdmin)
   const pathname = usePathname()
   const { logout } = useAuth()
   const { isCollapsed, toggleCollapse } = useSidebarStore()

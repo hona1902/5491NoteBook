@@ -11,7 +11,6 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from api.auth import PasswordAuthMiddleware
 from open_notebook.exceptions import (
     AuthenticationError,
     ConfigurationError,
@@ -23,6 +22,7 @@ from open_notebook.exceptions import (
     RateLimitError,
 )
 from api.routers import (
+    admin,
     auth,
     chat,
     config,
@@ -53,6 +53,38 @@ try:
     logger.info("Commands imported in API process")
 except Exception as e:
     logger.error(f"Failed to import commands in API process: {e}")
+
+
+async def _bootstrap_admin_data(admin_user_id: str):
+    """Assign all existing ownerless data to the bootstrap admin."""
+    from open_notebook.database.repository import ensure_record_id, repo_query as _rq
+
+    # Convert to RecordID — DB schema defines owner_id as option<record<app_user>>
+    admin_record_id = ensure_record_id(admin_user_id)
+
+    notes_result = await _rq(
+        "UPDATE note SET owner_id = $admin_id WHERE owner_id = NONE",
+        {"admin_id": admin_record_id},
+    )
+    notes_count = len(notes_result) if notes_result else 0
+
+    sessions_result = await _rq(
+        "UPDATE chat_session SET owner_id = $admin_id WHERE owner_id = NONE",
+        {"admin_id": admin_record_id},
+    )
+    sessions_count = len(sessions_result) if sessions_result else 0
+
+    notebooks_result = await _rq(
+        "UPDATE notebook SET created_by = $admin_id WHERE created_by = NONE",
+        {"admin_id": admin_record_id},
+    )
+    notebooks_count = len(notebooks_result) if notebooks_result else 0
+
+    logger.info(
+        f"Bootstrap data migration: {notes_count} notes, "
+        f"{sessions_count} chat sessions, {notebooks_count} notebooks "
+        f"assigned to admin {admin_user_id}"
+    )
 
 
 @asynccontextmanager
@@ -107,6 +139,49 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Podcast profile migration encountered errors: {e}")
         # Non-fatal: profiles can be migrated manually via UI
 
+    # JWT secret key check
+    jwt_secret = os.environ.get("JWT_SECRET_KEY", "")
+    if not jwt_secret:
+        raise RuntimeError(
+            "JWT_SECRET_KEY environment variable is not set. "
+            "Authentication cannot function without it."
+        )
+
+    # Admin bootstrap: create first admin user if app_user table is empty
+    try:
+        from open_notebook.database.repository import repo_query as _repo_query
+        from open_notebook.domain.user import AppUser
+
+        existing_users = await _repo_query("SELECT count() FROM app_user GROUP ALL")
+        user_count = existing_users[0]["count"] if existing_users else 0
+
+        if user_count == 0:
+            admin_username = os.environ.get("ADMIN_USERNAME")
+            admin_email = os.environ.get("ADMIN_EMAIL")
+            admin_password = os.environ.get("ADMIN_PASSWORD")
+
+            if admin_username and admin_email and admin_password:
+                admin_user = await AppUser.create_user(
+                    username=admin_username,
+                    email=admin_email,
+                    password=admin_password,
+                    role="admin",
+                )
+                logger.success(
+                    f"Bootstrap: created admin user '{admin_username}' ({admin_user.id})"
+                )
+
+                # Migrate existing data to admin
+                await _bootstrap_admin_data(admin_user.id)
+            else:
+                logger.warning(
+                    "No users exist and ADMIN_USERNAME/ADMIN_EMAIL/ADMIN_PASSWORD "
+                    "not all set. Cannot bootstrap admin user."
+                )
+    except Exception as e:
+        logger.error(f"Admin bootstrap error: {e}")
+        # Non-fatal: admin can be created later
+
     logger.success("API initialization completed successfully")
 
     # Yield control to the application
@@ -122,22 +197,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add password authentication middleware first
-# Exclude /api/auth/status and /api/config from authentication
-app.add_middleware(
-    PasswordAuthMiddleware,
-    excluded_paths=[
-        "/",
-        "/health",
-        "/docs",
-        "/openapi.json",
-        "/redoc",
-        "/api/auth/status",
-        "/api/config",
-    ],
-)
-
-# Add CORS middleware last (so it processes first)
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # In production, replace with specific origins
@@ -280,6 +340,7 @@ app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(source_chat.router, prefix="/api", tags=["source-chat"])
 app.include_router(credentials.router, prefix="/api", tags=["credentials"])
 app.include_router(languages.router, prefix="/api", tags=["languages"])
+app.include_router(admin.router, prefix="/api", tags=["admin"])
 
 
 @app.get("/")

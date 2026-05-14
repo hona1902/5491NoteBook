@@ -1,8 +1,9 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 
+from api.auth import get_current_user, require_admin
 from api.models import (
     NotebookCreate,
     NotebookDeletePreview,
@@ -12,6 +13,7 @@ from api.models import (
 )
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
+from open_notebook.domain.user import AppUser
 from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
@@ -21,6 +23,7 @@ router = APIRouter()
 async def get_notebooks(
     archived: Optional[bool] = Query(None, description="Filter by archived status"),
     order_by: str = Query("updated desc", description="Order by field and direction"),
+    current_user: AppUser = Depends(get_current_user),
 ):
     """Get all notebooks with optional filtering and ordering."""
     try:
@@ -87,12 +90,16 @@ async def get_notebooks(
 
 
 @router.post("/notebooks", response_model=NotebookResponse)
-async def create_notebook(notebook: NotebookCreate):
+async def create_notebook(
+    notebook: NotebookCreate,
+    current_user: AppUser = Depends(require_admin),
+):
     """Create a new notebook."""
     try:
         new_notebook = Notebook(
             name=notebook.name,
             description=notebook.description,
+            created_by=current_user.id,
         )
         await new_notebook.save()
 
@@ -118,7 +125,10 @@ async def create_notebook(notebook: NotebookCreate):
 @router.get(
     "/notebooks/{notebook_id}/delete-preview", response_model=NotebookDeletePreview
 )
-async def get_notebook_delete_preview(notebook_id: str):
+async def get_notebook_delete_preview(
+    notebook_id: str,
+    current_user: AppUser = Depends(require_admin),
+):
     """Get a preview of what will be deleted when this notebook is deleted."""
     try:
         notebook = await Notebook.get(notebook_id)
@@ -145,7 +155,10 @@ async def get_notebook_delete_preview(notebook_id: str):
 
 
 @router.get("/notebooks/{notebook_id}", response_model=NotebookResponse)
-async def get_notebook(notebook_id: str):
+async def get_notebook(
+    notebook_id: str,
+    current_user: AppUser = Depends(get_current_user),
+):
     """Get a specific notebook by ID."""
     try:
         # Query with counts for single notebook
@@ -181,7 +194,11 @@ async def get_notebook(notebook_id: str):
 
 
 @router.put("/notebooks/{notebook_id}", response_model=NotebookResponse)
-async def update_notebook(notebook_id: str, notebook_update: NotebookUpdate):
+async def update_notebook(
+    notebook_id: str,
+    notebook_update: NotebookUpdate,
+    current_user: AppUser = Depends(require_admin),
+):
     """Update a notebook."""
     try:
         notebook = await Notebook.get(notebook_id)
@@ -243,7 +260,11 @@ async def update_notebook(notebook_id: str, notebook_update: NotebookUpdate):
 
 
 @router.post("/notebooks/{notebook_id}/sources/{source_id}")
-async def add_source_to_notebook(notebook_id: str, source_id: str):
+async def add_source_to_notebook(
+    notebook_id: str,
+    source_id: str,
+    current_user: AppUser = Depends(require_admin),
+):
     """Add an existing source to a notebook (create the reference)."""
     try:
         # Check if notebook exists
@@ -288,7 +309,11 @@ async def add_source_to_notebook(notebook_id: str, source_id: str):
 
 
 @router.delete("/notebooks/{notebook_id}/sources/{source_id}")
-async def remove_source_from_notebook(notebook_id: str, source_id: str):
+async def remove_source_from_notebook(
+    notebook_id: str,
+    source_id: str,
+    current_user: AppUser = Depends(require_admin),
+):
     """Remove a source from a notebook (delete the reference)."""
     try:
         # Check if notebook exists
@@ -324,6 +349,7 @@ async def delete_notebook(
         False,
         description="Whether to delete sources that belong only to this notebook",
     ),
+    current_user: AppUser = Depends(require_admin),
 ):
     """
     Delete a notebook with cascade deletion.
