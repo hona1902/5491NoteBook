@@ -103,7 +103,7 @@ async def get_env_status(current_user: AppUser = Depends(get_current_user)):
 @router.get("", response_model=List[CredentialResponse])
 async def list_credentials(
     provider: Optional[str] = Query(None, description="Filter by provider"),
-    admin_user: AppUser = Depends(require_admin),
+    current_user: AppUser = Depends(get_current_user),
 ):
     """List all credentials, optionally filtered by provider."""
     try:

@@ -727,7 +727,7 @@ async def download_source_file(source_id: str):
 @router.get("/sources/{source_id}/status", response_model=SourceStatusResponse)
 async def get_source_status(
     source_id: str,
-    admin_user: AppUser = Depends(require_admin),
+    current_user: AppUser = Depends(get_current_user),
 ):
     """Get processing status for a source."""
     try:
