@@ -107,6 +107,13 @@ export const useAuthStore = create<AuthState>()(
               lastAuthCheck: Date.now(),
               error: null,
             })
+            // Sync server-side preferences after login
+            try {
+              const { usePreferencesStore } = await import('@/lib/stores/preferences-store')
+              await usePreferencesStore.getState().fetchPreferences()
+            } catch (e) {
+              console.warn('Failed to sync preferences after login:', e)
+            }
             return true
           } else {
             let errorMessage = 'Authentication failed'

@@ -3,10 +3,11 @@ import traceback
 from typing import Dict, List, Optional
 
 from esperanto import AIFactory
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from pydantic import BaseModel
 
+from api.auth import get_current_user, require_admin
 from api.models import (
     DefaultModelsResponse,
     ModelCreate,
@@ -23,6 +24,7 @@ from open_notebook.ai.model_discovery import (
     sync_provider_models,
 )
 from open_notebook.ai.models import DefaultModels, Model
+from open_notebook.domain.user import AppUser
 from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
@@ -169,6 +171,7 @@ def _check_openai_compatible_support(mode: str) -> bool:
 @router.get("/models", response_model=List[ModelResponse])
 async def get_models(
     type: Optional[str] = Query(None, description="Filter by model type"),
+    current_user: AppUser = Depends(get_current_user),
 ):
     """Get all configured models with optional type filtering."""
     try:
@@ -195,7 +198,7 @@ async def get_models(
 
 
 @router.post("/models", response_model=ModelResponse)
-async def create_model(model_data: ModelCreate):
+async def create_model(model_data: ModelCreate, admin_user: AppUser = Depends(require_admin)):
     """Create a new model configuration."""
     try:
         # Validate model type
@@ -250,7 +253,7 @@ async def create_model(model_data: ModelCreate):
 
 
 @router.delete("/models/{model_id}")
-async def delete_model(model_id: str):
+async def delete_model(model_id: str, admin_user: AppUser = Depends(require_admin)):
     """Delete a model configuration."""
     try:
         model = await Model.get(model_id)
@@ -268,7 +271,7 @@ async def delete_model(model_id: str):
 
 
 @router.post("/models/{model_id}/test", response_model=ModelTestResponse)
-async def test_model(model_id: str):
+async def test_model(model_id: str, admin_user: AppUser = Depends(require_admin)):
     """Test if a specific model is correctly configured and functional."""
     try:
         model = await Model.get(model_id)
@@ -291,7 +294,7 @@ async def test_model(model_id: str):
 
 
 @router.get("/models/defaults", response_model=DefaultModelsResponse)
-async def get_default_models():
+async def get_default_models(current_user: AppUser = Depends(get_current_user)):
     """Get default model assignments."""
     try:
         defaults = await DefaultModels.get_instance()
@@ -313,7 +316,7 @@ async def get_default_models():
 
 
 @router.put("/models/defaults", response_model=DefaultModelsResponse)
-async def update_default_models(defaults_data: DefaultModelsResponse):
+async def update_default_models(defaults_data: DefaultModelsResponse, admin_user: AppUser = Depends(require_admin)):
     """Update default model assignments."""
     try:
         defaults = await DefaultModels.get_instance()
@@ -363,7 +366,7 @@ async def update_default_models(defaults_data: DefaultModelsResponse):
 
 
 @router.get("/models/providers", response_model=ProviderAvailabilityResponse)
-async def get_provider_availability():
+async def get_provider_availability(current_user: AppUser = Depends(get_current_user)):
     """Get provider availability based on database config and environment variables."""
     try:
         # Check which providers have credentials in the database or env vars
@@ -487,7 +490,7 @@ async def get_provider_availability():
 @router.get(
     "/models/discover/{provider}", response_model=List[DiscoveredModelResponse]
 )
-async def discover_models(provider: str):
+async def discover_models(provider: str, admin_user: AppUser = Depends(require_admin)):
     """
     Discover available models from a provider without registering them.
 
@@ -516,7 +519,7 @@ async def discover_models(provider: str):
 
 
 @router.post("/models/sync/{provider}", response_model=ProviderSyncResponse)
-async def sync_models(provider: str):
+async def sync_models(provider: str, admin_user: AppUser = Depends(require_admin)):
     """
     Sync models for a specific provider.
 
@@ -543,7 +546,7 @@ async def sync_models(provider: str):
 
 
 @router.post("/models/sync", response_model=AllProvidersSyncResponse)
-async def sync_all_models():
+async def sync_all_models(admin_user: AppUser = Depends(require_admin)):
     """
     Sync models for all configured providers.
 
@@ -581,7 +584,7 @@ async def sync_all_models():
 
 
 @router.get("/models/count/{provider}", response_model=ProviderModelCountResponse)
-async def get_model_count(provider: str):
+async def get_model_count(provider: str, current_user: AppUser = Depends(get_current_user)):
     """
     Get count of registered models for a provider, grouped by type.
 
@@ -604,7 +607,7 @@ async def get_model_count(provider: str):
 
 
 @router.get("/models/by-provider/{provider}", response_model=List[ModelResponse])
-async def get_models_by_provider(provider: str):
+async def get_models_by_provider(provider: str, current_user: AppUser = Depends(get_current_user)):
     """
     Get all registered models for a specific provider.
 
@@ -682,7 +685,7 @@ def _get_preferred_model(
 
 
 @router.post("/models/auto-assign", response_model=AutoAssignResult)
-async def auto_assign_defaults():
+async def auto_assign_defaults(admin_user: AppUser = Depends(require_admin)):
     """
     Auto-assign default models based on available models.
 

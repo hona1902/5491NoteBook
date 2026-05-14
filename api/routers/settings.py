@@ -1,15 +1,17 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
+from api.auth import get_current_user, require_admin
 from api.models import SettingsResponse, SettingsUpdate
 from open_notebook.domain.content_settings import ContentSettings
+from open_notebook.domain.user import AppUser
 from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
 
 
 @router.get("/settings", response_model=SettingsResponse)
-async def get_settings():
+async def get_settings(current_user: AppUser = Depends(get_current_user)):
     """Get all application settings."""
     try:
         settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]
@@ -29,7 +31,10 @@ async def get_settings():
 
 
 @router.put("/settings", response_model=SettingsResponse)
-async def update_settings(settings_update: SettingsUpdate):
+async def update_settings(
+    settings_update: SettingsUpdate,
+    admin_user: AppUser = Depends(require_admin),
+):
     """Update application settings."""
     try:
         settings: ContentSettings = await ContentSettings.get_instance()  # type: ignore[assignment]

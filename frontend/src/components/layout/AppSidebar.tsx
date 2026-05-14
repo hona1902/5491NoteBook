@@ -70,12 +70,16 @@ const getNavigation = (t: TFunction, isAdmin: boolean) => {
     {
       title: t('navigation.manage'),
       items: [
-        { name: t('navigation.models'), href: '/settings/api-keys', icon: Bot },
-        { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle },
-        { name: t('navigation.settings'), href: '/settings', icon: Settings },
+        ...(isAdmin ? [
+          { name: t('navigation.models'), href: '/settings/api-keys', icon: Bot },
+          { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle },
+          { name: t('navigation.settings'), href: '/settings', icon: Settings },
+        ] : []),
         { name: t('navigation.changePassword'), href: '/settings/change-password', icon: KeyRound },
-        { name: t('navigation.advanced'), href: '/advanced', icon: Wrench },
-        ...(isAdmin ? [{ name: t('navigation.users'), href: '/admin/users', icon: Users }] : []),
+        ...(isAdmin ? [
+          { name: t('navigation.advanced'), href: '/advanced', icon: Wrench },
+          { name: t('navigation.users'), href: '/admin/users', icon: Users },
+        ] : []),
       ],
     },
   ]

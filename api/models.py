@@ -716,3 +716,14 @@ class AdminUpdateUserRequest(BaseModel):
     email: Optional[str] = Field(None, description="Email address")
     role: Optional[str] = Field(None, description="User role (admin or user)")
     is_active: Optional[bool] = Field(None, description="Whether user is active")
+
+
+# User Preferences models
+class UserPreferencesResponse(BaseModel):
+    theme: str = Field(default="system", description="Theme preference (light, dark, system)")
+
+
+class UserPreferencesUpdate(BaseModel):
+    theme: Literal["light", "dark", "system"] = Field(
+        ..., description="Theme preference"
+    )

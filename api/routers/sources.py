@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, Response
 from loguru import logger
 from surreal_commands import execute_command_sync, submit_command
 
+from api.auth import get_current_user, require_admin
 from api.command_service import CommandService
 from api.models import (
     AssetModel,
@@ -33,6 +34,7 @@ from open_notebook.config import UPLOADS_FOLDER
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Asset, Notebook, Source
 from open_notebook.domain.transformation import Transformation
+from open_notebook.domain.user import AppUser
 from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
@@ -169,6 +171,7 @@ async def get_sources(
         "updated", description="Field to sort by (created or updated)"
     ),
     sort_order: str = Query("desc", description="Sort order (asc or desc)"),
+    current_user: AppUser = Depends(get_current_user),
 ):
     """Get sources with pagination and sorting support."""
     try:
@@ -291,6 +294,7 @@ async def create_source(
     form_data: tuple[SourceCreate, Optional[UploadFile]] = Depends(
         parse_source_form_data
     ),
+    admin_user: AppUser = Depends(require_admin),
 ):
     """Create a new source with support for both JSON and multipart form data."""
     source_data, upload_file = form_data
@@ -578,7 +582,10 @@ async def create_source(
 
 
 @router.post("/sources/json", response_model=SourceResponse)
-async def create_source_json(source_data: SourceCreate):
+async def create_source_json(
+    source_data: SourceCreate,
+    admin_user: AppUser = Depends(require_admin),
+):
     """Create a new source using JSON payload (legacy endpoint for backward compatibility)."""
     # Convert to form data format and call main endpoint
     form_data = (source_data, None)
@@ -625,7 +632,10 @@ def _is_source_file_available(source: Source) -> Optional[bool]:
 
 
 @router.get("/sources/{source_id}", response_model=SourceResponse)
-async def get_source(source_id: str):
+async def get_source(
+    source_id: str,
+    current_user: AppUser = Depends(get_current_user),
+):
     """Get a specific source by ID."""
     try:
         source = await Source.get(source_id)
@@ -715,7 +725,10 @@ async def download_source_file(source_id: str):
 
 
 @router.get("/sources/{source_id}/status", response_model=SourceStatusResponse)
-async def get_source_status(source_id: str):
+async def get_source_status(
+    source_id: str,
+    admin_user: AppUser = Depends(require_admin),
+):
     """Get processing status for a source."""
     try:
         # First, verify source exists
@@ -777,7 +790,11 @@ async def get_source_status(source_id: str):
 
 
 @router.put("/sources/{source_id}", response_model=SourceResponse)
-async def update_source(source_id: str, source_update: SourceUpdate):
+async def update_source(
+    source_id: str,
+    source_update: SourceUpdate,
+    admin_user: AppUser = Depends(require_admin),
+):
     """Update a source."""
     try:
         source = await Source.get(source_id)
@@ -819,7 +836,10 @@ async def update_source(source_id: str, source_update: SourceUpdate):
 
 
 @router.post("/sources/{source_id}/retry", response_model=SourceResponse)
-async def retry_source_processing(source_id: str):
+async def retry_source_processing(
+    source_id: str,
+    admin_user: AppUser = Depends(require_admin),
+):
     """Retry processing for a failed or stuck source."""
     try:
         # First, verify source exists
@@ -944,7 +964,10 @@ async def retry_source_processing(source_id: str):
 
 
 @router.delete("/sources/{source_id}")
-async def delete_source(source_id: str):
+async def delete_source(
+    source_id: str,
+    admin_user: AppUser = Depends(require_admin),
+):
     """Delete a source."""
     try:
         source = await Source.get(source_id)
@@ -959,6 +982,66 @@ async def delete_source(source_id: str):
     except Exception as e:
         logger.error(f"Error deleting source {source_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error deleting source: {str(e)}")
+
+
+@router.post("/sources/{source_id}/notebooks/{notebook_id}")
+async def add_source_to_notebook(
+    source_id: str,
+    notebook_id: str,
+    admin_user: AppUser = Depends(require_admin),
+):
+    """Add a source to a notebook (admin only)."""
+    try:
+        source = await Source.get(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        notebook = await Notebook.get(notebook_id)
+        if not notebook:
+            raise HTTPException(status_code=404, detail="Notebook not found")
+
+        await source.add_to_notebook(notebook_id)
+        return {"message": "Source added to notebook successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding source {source_id} to notebook {notebook_id}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Error adding source to notebook: {str(e)}"
+        )
+
+
+@router.delete("/sources/{source_id}/notebooks/{notebook_id}")
+async def remove_source_from_notebook(
+    source_id: str,
+    notebook_id: str,
+    admin_user: AppUser = Depends(require_admin),
+):
+    """Remove a source from a notebook (admin only)."""
+    try:
+        source = await Source.get(source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+
+        # Remove the reference relationship
+        await repo_query(
+            "DELETE reference WHERE in = $source_id AND out = $notebook_id",
+            {
+                "source_id": ensure_record_id(source_id),
+                "notebook_id": ensure_record_id(notebook_id),
+            },
+        )
+        return Response(status_code=204)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error removing source {source_id} from notebook {notebook_id}: {e}"
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error removing source from notebook: {str(e)}",
+        )
 
 
 @router.get("/sources/{source_id}/insights", response_model=List[SourceInsightResponse])

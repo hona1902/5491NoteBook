@@ -1,6 +1,7 @@
 'use client'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { AdminRoute } from '@/components/auth/AdminRoute'
 import { RebuildEmbeddings } from './components/RebuildEmbeddings'
 import { SystemInfo } from './components/SystemInfo'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -9,6 +10,7 @@ export default function AdvancedPage() {
   const { t } = useTranslation()
   return (
     <AppShell>
+      <AdminRoute>
       <div className="flex-1 overflow-y-auto">
         <div className="p-6">
           <div className="max-w-4xl mx-auto space-y-6">
@@ -24,6 +26,7 @@ export default function AdvancedPage() {
           </div>
         </div>
       </div>
+      </AdminRoute>
     </AppShell>
   )
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useTheme } from '@/lib/stores/theme-store'
+import { usePreferencesStore } from '@/lib/stores/preferences-store'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -16,7 +17,8 @@ interface ThemeToggleProps {
 }
 
 export function ThemeToggle({ iconOnly = false }: ThemeToggleProps) {
-  const { theme, setTheme } = useTheme()
+  const { theme } = useTheme()
+  const { updateThemePreference } = usePreferencesStore()
   const { t } = useTranslation()
 
   return (
@@ -37,21 +39,21 @@ export function ThemeToggle({ iconOnly = false }: ThemeToggleProps) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem 
-          onClick={() => setTheme('light')}
+          onClick={() => updateThemePreference('light')}
           className={theme === 'light' ? 'bg-accent' : ''}
         >
           <Sun className="mr-2 h-4 w-4" />
           <span>{t('common.light')}</span>
         </DropdownMenuItem>
         <DropdownMenuItem 
-          onClick={() => setTheme('dark')}
+          onClick={() => updateThemePreference('dark')}
           className={theme === 'dark' ? 'bg-accent' : ''}
         >
           <Moon className="mr-2 h-4 w-4" />
           <span>{t('common.dark')}</span>
         </DropdownMenuItem>
         <DropdownMenuItem 
-          onClick={() => setTheme('system')}
+          onClick={() => updateThemePreference('system')}
           className={theme === 'system' ? 'bg-accent' : ''}
         >
           <Monitor className="mr-2 h-4 w-4" />

@@ -43,6 +43,7 @@ from api.routers import (
     sources,
     speaker_profiles,
     transformations,
+    user_preferences,
 )
 from api.routers import commands as commands_router
 from open_notebook.database.async_migrate import AsyncMigrationManager
@@ -341,6 +342,7 @@ app.include_router(source_chat.router, prefix="/api", tags=["source-chat"])
 app.include_router(credentials.router, prefix="/api", tags=["credentials"])
 app.include_router(languages.router, prefix="/api", tags=["languages"])
 app.include_router(admin.router, prefix="/api", tags=["admin"])
+app.include_router(user_preferences.router, prefix="/api", tags=["user-preferences"])
 
 
 @app.get("/")

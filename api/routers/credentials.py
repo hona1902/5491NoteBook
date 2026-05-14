@@ -20,10 +20,11 @@ NEVER returns actual API key values - only metadata.
 
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from pydantic import SecretStr
 
+from api.auth import get_current_user, require_admin
 from api.credentials_service import (
     credential_to_response,
     discover_with_config,
@@ -56,6 +57,7 @@ from api.models import (
 )
 from open_notebook.database.repository import ensure_record_id, repo_delete, repo_query
 from open_notebook.domain.credential import Credential
+from open_notebook.domain.user import AppUser
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
 
@@ -71,7 +73,7 @@ def _handle_value_error(e: ValueError, status_code: int = 400) -> HTTPException:
 
 
 @router.get("/status")
-async def get_status():
+async def get_status(current_user: AppUser = Depends(get_current_user)):
     """
     Get configuration status: encryption key status, and per-provider
     configured/source information.
@@ -84,7 +86,7 @@ async def get_status():
 
 
 @router.get("/env-status")
-async def get_env_status():
+async def get_env_status(current_user: AppUser = Depends(get_current_user)):
     """Check what's configured via environment variables."""
     try:
         return await svc_get_env_status()
@@ -101,6 +103,7 @@ async def get_env_status():
 @router.get("", response_model=List[CredentialResponse])
 async def list_credentials(
     provider: Optional[str] = Query(None, description="Filter by provider"),
+    admin_user: AppUser = Depends(require_admin),
 ):
     """List all credentials, optionally filtered by provider."""
     try:
@@ -122,7 +125,7 @@ async def list_credentials(
 
 
 @router.get("/by-provider/{provider}", response_model=List[CredentialResponse])
-async def list_credentials_by_provider(provider: str):
+async def list_credentials_by_provider(provider: str, admin_user: AppUser = Depends(require_admin)):
     """List all credentials for a specific provider."""
     try:
         credentials = await Credential.get_by_provider(provider.lower())
@@ -137,7 +140,7 @@ async def list_credentials_by_provider(provider: str):
 
 
 @router.post("", response_model=CredentialResponse, status_code=201)
-async def create_credential(request: CreateCredentialRequest):
+async def create_credential(request: CreateCredentialRequest, admin_user: AppUser = Depends(require_admin)):
     """Create a new credential."""
     try:
         require_encryption_key()
@@ -181,7 +184,7 @@ async def create_credential(request: CreateCredentialRequest):
 
 
 @router.get("/{credential_id}", response_model=CredentialResponse)
-async def get_credential(credential_id: str):
+async def get_credential(credential_id: str, admin_user: AppUser = Depends(require_admin)):
     """Get a specific credential by ID. Never returns api_key."""
     try:
         cred = await Credential.get(credential_id)
@@ -193,7 +196,7 @@ async def get_credential(credential_id: str):
 
 
 @router.put("/{credential_id}", response_model=CredentialResponse)
-async def update_credential(credential_id: str, request: UpdateCredentialRequest):
+async def update_credential(credential_id: str, request: UpdateCredentialRequest, admin_user: AppUser = Depends(require_admin)):
     """Update an existing credential."""
     try:
         require_encryption_key()
@@ -258,6 +261,7 @@ async def delete_credential(
     migrate_to: Optional[str] = Query(
         None, description="Migrate linked models to this credential ID"
     ),
+    admin_user: AppUser = Depends(require_admin),
 ):
     """
     Delete a credential.
@@ -351,13 +355,13 @@ async def delete_credential(
 
 
 @router.post("/{credential_id}/test")
-async def test_credential(credential_id: str):
+async def test_credential(credential_id: str, admin_user: AppUser = Depends(require_admin)):
     """Test connection using this credential's configuration."""
     return await svc_test_credential(credential_id)
 
 
 @router.post("/{credential_id}/discover", response_model=DiscoverModelsResponse)
-async def discover_models_for_credential(credential_id: str):
+async def discover_models_for_credential(credential_id: str, admin_user: AppUser = Depends(require_admin)):
     """Discover available models using this credential's API key."""
     try:
         cred = await Credential.get(credential_id)
@@ -386,7 +390,9 @@ async def discover_models_for_credential(credential_id: str):
 
 @router.post("/{credential_id}/register-models", response_model=RegisterModelsResponse)
 async def register_models_for_credential(
-    credential_id: str, request: RegisterModelsRequest
+    credential_id: str,
+    request: RegisterModelsRequest,
+    admin_user: AppUser = Depends(require_admin),
 ):
     """Register discovered models and link them to this credential."""
     try:
@@ -403,7 +409,7 @@ async def register_models_for_credential(
 
 
 @router.post("/migrate-from-provider-config")
-async def migrate_from_provider_config():
+async def migrate_from_provider_config(admin_user: AppUser = Depends(require_admin)):
     """Migrate existing ProviderConfig data to individual credential records."""
     try:
         return await svc_migrate_from_provider_config()
@@ -415,7 +421,7 @@ async def migrate_from_provider_config():
 
 
 @router.post("/migrate-from-env")
-async def migrate_from_env():
+async def migrate_from_env(admin_user: AppUser = Depends(require_admin)):
     """Migrate API keys from environment variables to credential records."""
     try:
         return await svc_migrate_from_env()
