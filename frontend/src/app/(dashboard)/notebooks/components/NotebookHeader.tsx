@@ -11,6 +11,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { getDateLocale } from '@/lib/utils/date-locale'
 import { InlineEdit } from '@/components/common/InlineEdit'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useIsAdmin } from '@/lib/hooks/use-is-admin'
 
 interface NotebookHeaderProps {
   notebook: NotebookResponse
@@ -18,6 +19,7 @@ interface NotebookHeaderProps {
 
 export function NotebookHeader({ notebook }: NotebookHeaderProps) {
   const { t, language } = useTranslation()
+  const isAdmin = useIsAdmin()
   const dfLocale = getDateLocale(language)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   
@@ -62,11 +64,13 @@ export function NotebookHeader({ notebook }: NotebookHeaderProps) {
                 className="text-2xl font-bold"
                 inputClassName="text-2xl font-bold"
                 placeholder={t('notebooks.namePlaceholder')}
+                disabled={!isAdmin}
               />
               {notebook.archived && (
                 <Badge variant="secondary">{t('notebooks.archived')}</Badge>
               )}
             </div>
+            {isAdmin && (
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -89,12 +93,13 @@ export function NotebookHeader({ notebook }: NotebookHeaderProps) {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowDeleteDialog(true)}
-                className="text-red-600 hover:text-red-700"
+                className="text-destructive hover:text-destructive"
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 {t('common.delete')}
               </Button>
             </div>
+            )}
           </div>
           
           <InlineEdit
@@ -107,6 +112,7 @@ export function NotebookHeader({ notebook }: NotebookHeaderProps) {
             placeholder={t('notebooks.addDescription')}
             multiline
             emptyText={t('notebooks.addDescription')}
+            disabled={!isAdmin}
           />
           
           <div className="text-sm text-muted-foreground">

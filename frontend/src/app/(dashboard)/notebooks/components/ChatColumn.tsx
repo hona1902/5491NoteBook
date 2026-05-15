@@ -9,6 +9,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { AlertCircle } from 'lucide-react'
 import { ContextSelections } from '../[id]/page'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useIsAdmin } from '@/lib/hooks/use-is-admin'
+import { useAuthStore } from '@/lib/stores/auth-store'
 import { SourceListResponse } from '@/lib/types/api'
 
 interface ChatColumnProps {
@@ -20,6 +22,13 @@ interface ChatColumnProps {
 
 export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoading }: ChatColumnProps) {
   const { t } = useTranslation()
+  const isAdmin = useIsAdmin()
+  const username = useAuthStore((s) => s.user?.username)
+
+  // Personalized title for non-admin users
+  const chatTitle = isAdmin
+    ? t('chat.chatWithNotebook')
+    : `${t('chat.chatWithNotebook')} — ${username || t('common.you', 'You')}`
 
   // Fetch notes for this notebook
   const { data: notes = [], isLoading: notesLoading } = useNotes(notebookId)
@@ -93,7 +102,7 @@ export function ChatColumn({ notebookId, contextSelections, sources, sourcesLoad
 
   return (
     <ChatPanel
-      title={t('chat.chatWithNotebook')}
+      title={chatTitle}
       contextType="notebook"
       messages={chat.messages}
       isStreaming={chat.isSending}

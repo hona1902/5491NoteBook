@@ -8,12 +8,18 @@ import { useSourceChat } from '@/lib/hooks/useSourceChat'
 import { ChatPanel } from '@/components/source/ChatPanel'
 import { useNavigation } from '@/lib/hooks/use-navigation'
 import { SourceDetailContent } from '@/components/source/SourceDetailContent'
+import { useIsAdmin } from '@/lib/hooks/use-is-admin'
+import { useAuthStore } from '@/lib/stores/auth-store'
+import { useTranslation } from '@/lib/hooks/use-translation'
 
 export default function SourceDetailPage() {
   const router = useRouter()
   const params = useParams()
   const sourceId = params?.id ? decodeURIComponent(params.id as string) : ''
   const navigation = useNavigation()
+  const { t } = useTranslation()
+  const isAdmin = useIsAdmin()
+  const username = useAuthStore((s) => s.user?.username)
 
   // Initialize source chat
   const chat = useSourceChat(sourceId)
@@ -53,6 +59,7 @@ export default function SourceDetailPage() {
         {/* Right column - Chat */}
         <div className="overflow-y-auto px-4 pb-6">
           <ChatPanel
+            title={!isAdmin ? `${t('chat.chatWith', 'Chat').replace('{name}', t('navigation.sources', 'Source'))} — ${username || t('common.you', 'You')}` : undefined}
             messages={chat.messages}
             isStreaming={chat.isStreaming}
             contextIndicators={chat.contextIndicators}

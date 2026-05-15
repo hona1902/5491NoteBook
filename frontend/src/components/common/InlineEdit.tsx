@@ -12,6 +12,7 @@ interface InlineEditProps {
   placeholder?: string
   multiline?: boolean
   emptyText?: string
+  disabled?: boolean
   id?: string
   name?: string
   autocomplete?: string
@@ -25,6 +26,7 @@ export function InlineEdit({
   placeholder,
   multiline = false,
   emptyText,
+  disabled = false,
   id: providedId,
   name,
   autocomplete = 'off'
@@ -83,6 +85,19 @@ export function InlineEdit({
   }
 
   if (!isEditing) {
+    if (disabled) {
+      return (
+        <span
+          className={cn(
+            "px-2 py-1 -mx-2 -my-1 text-left w-full break-all",
+            className
+          )}
+        >
+          {value || <span className="text-muted-foreground">{defaultEmptyText}</span>}
+        </span>
+      )
+    }
+
     return (
       <button
         type="button"

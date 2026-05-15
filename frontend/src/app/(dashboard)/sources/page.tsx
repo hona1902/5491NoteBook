@@ -17,9 +17,11 @@ import { getDateLocale } from '@/lib/utils/date-locale'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
+import { useIsAdmin } from '@/lib/hooks/use-is-admin'
 
 export default function SourcesPage() {
   const { t, language } = useTranslation()
+  const isAdmin = useIsAdmin()
   const [sources, setSources] = useState<SourceListResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -265,7 +267,7 @@ export default function SourcesPage() {
     return (
       <AppShell>
         <div className="flex h-full items-center justify-center">
-          <p className="text-red-500">{error}</p>
+          <p className="text-destructive">{error}</p>
         </div>
       </AppShell>
     )
@@ -304,7 +306,7 @@ export default function SourcesPage() {
               <col className="w-auto" />
               <col className="w-[140px]" />
               <col className="w-[100px]" />
-              <col className="w-[100px]" />
+              {isAdmin && <col className="w-[100px]" />}
               <col className="w-[100px]" />
             </colgroup>
             <thead className="sticky top-0 bg-background z-10">
@@ -340,9 +342,11 @@ export default function SourcesPage() {
                 <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground hidden lg:table-cell">
                   {t('sources.embedded')}
                 </th>
+                {isAdmin && (
                 <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
                   {t('common.actions')}
                 </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -392,6 +396,7 @@ export default function SourcesPage() {
                       {source.embedded ? t('sources.yes') : t('sources.no')}
                     </Badge>
                   </td>
+                  {isAdmin && (
                   <td className="h-12 px-4 text-right">
                     <Button
                       variant="ghost"
@@ -402,6 +407,7 @@ export default function SourcesPage() {
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </td>
+                  )}
                 </tr>
               ))}
               {loadingMore && (
@@ -419,6 +425,7 @@ export default function SourcesPage() {
         </div>
       </div>
 
+      {isAdmin && (
       <ConfirmDialog
         open={deleteDialog.open}
         onOpenChange={(open) => setDeleteDialog({ open, source: deleteDialog.source })}
@@ -428,6 +435,7 @@ export default function SourcesPage() {
         confirmVariant="destructive"
         onConfirm={handleDeleteConfirm}
       />
+      )}
     </AppShell>
   )
 }

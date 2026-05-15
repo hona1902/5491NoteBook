@@ -114,6 +114,13 @@ export const useAuthStore = create<AuthState>()(
             } catch (e) {
               console.warn('Failed to sync preferences after login:', e)
             }
+            // Bind theme store to user for per-user theme isolation
+            try {
+              const { useThemeStore } = await import('@/lib/stores/theme-store')
+              useThemeStore.getState().bindToUser(data.user.id)
+            } catch (e) {
+              console.warn('Failed to bind theme to user:', e)
+            }
             return true
           } else {
             let errorMessage = 'Authentication failed'
@@ -158,6 +165,13 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        // Unbind theme store to reset to system default
+        try {
+          const themeStore = require('@/lib/stores/theme-store')
+          themeStore.useThemeStore.getState().unbindUser()
+        } catch {
+          // Theme store may not be available
+        }
         set({
           isAuthenticated: false,
           token: null,

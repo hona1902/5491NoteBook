@@ -23,6 +23,7 @@ import { ContextMode } from '../[id]/page'
 import { CollapsibleColumn, createCollapseButton } from '@/components/notebooks/CollapsibleColumn'
 import { useNotebookColumnsStore } from '@/lib/stores/notebook-columns-store'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useIsAdmin } from '@/lib/hooks/use-is-admin'
 
 interface SourcesColumnProps {
   sources?: SourceListResponse[]
@@ -50,6 +51,7 @@ export function SourcesColumn({
   fetchNextPage,
 }: SourcesColumnProps) {
   const { t } = useTranslation()
+  const isAdmin = useIsAdmin()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addExistingDialogOpen, setAddExistingDialogOpen] = useState(false)
@@ -158,6 +160,7 @@ export function SourcesColumn({
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-lg">{t('navigation.sources')}</CardTitle>
               <div className="flex items-center gap-2">
+                {isAdmin && (
                 <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
                   <DropdownMenuTrigger asChild>
                     <Button size="sm">
@@ -177,6 +180,7 @@ export function SourcesColumn({
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+                )}
                 {collapseButton}
               </div>
             </div>
@@ -200,11 +204,11 @@ export function SourcesColumn({
                     key={source.id}
                     source={source}
                     onClick={handleSourceClick}
-                    onDelete={handleDeleteClick}
-                    onRetry={handleRetry}
-                    onRemoveFromNotebook={handleRemoveFromNotebook}
+                    onDelete={isAdmin ? handleDeleteClick : undefined}
+                    onRetry={isAdmin ? handleRetry : undefined}
+                    onRemoveFromNotebook={isAdmin ? handleRemoveFromNotebook : undefined}
                     onRefresh={onRefresh}
-                    showRemoveFromNotebook={true}
+                    showRemoveFromNotebook={isAdmin}
                     contextMode={contextSelections?.[source.id]}
                     onContextModeChange={onContextModeChange
                       ? (mode) => onContextModeChange(source.id, mode)

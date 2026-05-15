@@ -24,6 +24,8 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { CollapsibleColumn, createCollapseButton } from '@/components/notebooks/CollapsibleColumn'
 import { useNotebookColumnsStore } from '@/lib/stores/notebook-columns-store'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useIsAdmin } from '@/lib/hooks/use-is-admin'
+import { useAuthStore } from '@/lib/stores/auth-store'
 
 interface NotesColumnProps {
   notes?: NoteResponse[]
@@ -41,6 +43,8 @@ export function NotesColumn({
   onContextModeChange
 }: NotesColumnProps) {
   const { t, language } = useTranslation()
+  const isAdmin = useIsAdmin()
+  const username = useAuthStore((s) => s.user?.username)
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [editingNote, setEditingNote] = useState<NoteResponse | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -83,7 +87,9 @@ export function NotesColumn({
         <Card className="h-full flex flex-col flex-1 overflow-hidden">
           <CardHeader className="pb-3 flex-shrink-0">
             <div className="flex items-center justify-between gap-2">
-              <CardTitle className="text-lg">{t('common.notes')}</CardTitle>
+              <CardTitle className="text-lg">
+                {isAdmin ? t('common.notes') : `${t('common.notes')} — ${username || t('common.you', 'You')}`}
+              </CardTitle>
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
@@ -168,7 +174,7 @@ export function NotesColumn({
                                 e.stopPropagation()
                                 handleDeleteClick(note.id)
                               }}
-                              className="text-red-600 focus:text-red-600"
+                              className="text-destructive focus:text-destructive"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
                               {t('notebooks.deleteNote')}

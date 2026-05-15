@@ -18,12 +18,14 @@ import { NotebookDeleteDialog } from './NotebookDeleteDialog'
 import { useState } from 'react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getDateLocale } from '@/lib/utils/date-locale'
+import { useIsAdmin } from '@/lib/hooks/use-is-admin'
 interface NotebookCardProps {
   notebook: NotebookResponse
 }
 
 export function NotebookCard({ notebook }: NotebookCardProps) {
   const { t, language } = useTranslation()
+  const isAdmin = useIsAdmin()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const router = useRouter()
   const updateNotebook = useUpdateNotebook()
@@ -60,6 +62,7 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
                 )}
               </div>
               
+              {isAdmin && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -90,13 +93,14 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
                       e.stopPropagation()
                       setShowDeleteDialog(true)
                     }}
-                    className="text-red-600"
+                    className="text-destructive"
                   >
                     <Trash2 className="h-4 w-4 mr-2" />
                     {t('common.delete')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              )}
             </div>
           </CardHeader>
           
@@ -126,12 +130,14 @@ export function NotebookCard({ notebook }: NotebookCardProps) {
           </CardContent>
       </Card>
 
+      {isAdmin && (
       <NotebookDeleteDialog
         open={showDeleteDialog}
         onOpenChange={setShowDeleteDialog}
         notebookId={notebook.id}
         notebookName={notebook.name}
       />
+      )}
     </>
   )
 }

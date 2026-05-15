@@ -28,6 +28,8 @@ import { LanguageToggle } from '@/components/common/LanguageToggle'
 import type { TFunction } from 'i18next'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { Separator } from '@/components/ui/separator'
+import { Badge } from '@/components/ui/badge'
+import { ChangePasswordDialog } from '@/components/auth/ChangePasswordDialog'
 import {
   Book,
   Search,
@@ -75,7 +77,7 @@ const getNavigation = (t: TFunction, isAdmin: boolean) => {
           { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle },
           { name: t('navigation.settings'), href: '/settings', icon: Settings },
         ] : []),
-        { name: t('navigation.changePassword'), href: '/settings/change-password', icon: KeyRound },
+        { name: t('navigation.changePassword'), href: '#change-password', icon: KeyRound },
         ...(isAdmin ? [
           { name: t('navigation.advanced'), href: '/advanced', icon: Wrench },
           { name: t('navigation.users'), href: '/admin/users', icon: Users },
@@ -99,6 +101,7 @@ export function AppSidebar() {
   const { openSourceDialog, openNotebookDialog, openPodcastDialog } = useCreateDialogs()
 
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false)
   const [isMac, setIsMac] = useState(true) // Default to Mac for SSR
 
   // Detect platform for keyboard shortcut display
@@ -183,6 +186,7 @@ export function AppSidebar() {
               isCollapsed ? 'px-0' : 'px-3'
             )}
           >
+          {isAdmin && (
             <DropdownMenu open={createMenuOpen} onOpenChange={setCreateMenuOpen}>
               {isCollapsed ? (
                 <Tooltip>
@@ -252,6 +256,7 @@ export function AppSidebar() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          )}
           </div>
 
           {navigation.map((section, index) => (
@@ -267,12 +272,42 @@ export function AppSidebar() {
                 )}
 
                 {section.items.map((item) => {
+                  if (item.href === '#change-password') {
+                    // Change Password opens dialog instead of navigating
+                    const cpButton = (
+                      <Button
+                        variant="ghost"
+                        className={cn(
+                          'w-full gap-3 text-sidebar-foreground sidebar-menu-item',
+                          isCollapsed ? 'justify-center px-2' : 'justify-start'
+                        )}
+                        onClick={() => setChangePasswordOpen(true)}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        {!isCollapsed && <span>{item.name}</span>}
+                      </Button>
+                    )
+
+                    if (isCollapsed) {
+                      return (
+                        <Tooltip key={item.name}>
+                          <TooltipTrigger asChild>
+                            {cpButton}
+                          </TooltipTrigger>
+                          <TooltipContent side="right">{item.name}</TooltipContent>
+                        </Tooltip>
+                      )
+                    }
+
+                    return <div key={item.name}>{cpButton}</div>
+                  }
+
                   const isActive = pathname?.startsWith(item.href) || false
                   const button = (
                     <Button
                       variant={isActive ? 'secondary' : 'ghost'}
                       className={cn(
-                        'w-full gap-3 text-sidebar-foreground sidebar-menu-item',
+                        'w-full gap-3 text-sidebar-foreground sidebar-menu-item transition-colors duration-150',
                         isActive && 'bg-sidebar-accent text-sidebar-accent-foreground',
                         isCollapsed ? 'justify-center px-2' : 'justify-start'
                       )}
@@ -363,6 +398,18 @@ export function AppSidebar() {
             )}
           </div>
 
+          {/* User identity */}
+          {!isCollapsed && user && (
+            <div className="flex items-center gap-2 px-3 py-1.5">
+              <span className="text-sm font-medium text-sidebar-foreground truncate">{user.username}</span>
+              {isAdmin && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-primary/30 text-primary">
+                  Admin
+                </Badge>
+              )}
+            </div>
+          )}
+
           {isCollapsed ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -389,6 +436,9 @@ export function AppSidebar() {
             </Button>
           )}
         </div>
+
+        {/* Change Password Dialog */}
+        <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
       </div>
     </TooltipProvider>
   )

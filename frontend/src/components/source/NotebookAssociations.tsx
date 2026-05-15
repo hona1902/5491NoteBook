@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useNotebooks } from '@/lib/hooks/use-notebooks'
 import { useAddSourcesToNotebook, useRemoveSourceFromNotebook } from '@/lib/hooks/use-sources'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useIsAdmin } from '@/lib/hooks/use-is-admin'
 
 interface NotebookAssociationsProps {
   sourceId: string
@@ -22,6 +23,7 @@ export function NotebookAssociations({
   onSave,
 }: NotebookAssociationsProps) {
   const { t } = useTranslation()
+  const isAdmin = useIsAdmin()
   const [selectedNotebookIds, setSelectedNotebookIds] = useState<string[]>(currentNotebookIds)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -175,6 +177,7 @@ export function NotebookAssociations({
                       checked={isSelected}
                       onCheckedChange={() => handleToggleNotebook(notebook.id)}
                       className="mt-0.5"
+                      disabled={!isAdmin}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -197,7 +200,13 @@ export function NotebookAssociations({
           </div>
         </ScrollArea>
 
-        {hasChanges && (
+        {!isAdmin && (
+          <p className="text-xs text-muted-foreground italic">
+            {t('sources.onlyAdminsCanAssign', 'Only admins can assign sources to notebooks')}
+          </p>
+        )}
+
+        {isAdmin && hasChanges && (
           <div className="flex items-center justify-end gap-2 pt-2 border-t">
             <Button
               variant="outline"
